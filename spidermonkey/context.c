@@ -621,6 +621,8 @@ PyObject*
 Context_gc(Context* self, PyObject* args, PyObject* kwargs)
 {
     JS_GC(self->cx);
+
+    Py_INCREF(self);
     return (PyObject*) self;
 }
 
