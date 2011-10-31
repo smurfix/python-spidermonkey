@@ -7,7 +7,6 @@
  */
 
 #include "spidermonkey.h"
-#include <jsobj.h>
 
 PyObject*
 make_object(PyTypeObject* type, Context* cx, jsval val)

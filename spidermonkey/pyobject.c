@@ -7,7 +7,6 @@
  */
 
 #include "spidermonkey.h"
-#include <jsobj.h>
 
 /*
     This is a fairly unsafe operation in so much as
@@ -32,13 +31,13 @@ get_py_obj(JSContext* cx, JSObject* obj)
 }
 
 JSBool
-js_add_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* val)
+js_add_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
 {
     return JS_TRUE;
 }
 
 JSBool
-js_del_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* val)
+js_del_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -80,7 +79,7 @@ success:
 }
 
 JSBool
-js_get_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* val)
+js_get_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -152,7 +151,7 @@ done:
 }
 
 JSBool
-js_set_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* val)
+js_set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -256,7 +255,7 @@ success:
 }
 
 JSBool
-js_call(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
+js_call(JSContext* jscx, uintN argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -264,7 +263,9 @@ js_call(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
     PyObject* ret = NULL;
     PyObject* attrcheck = NULL;
     JSBool jsret = JS_FALSE;
-    
+    jsval rval;
+    jsval *argv = JS_ARGV(jscx, vp);
+
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
     {
@@ -300,8 +301,10 @@ js_call(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
         goto error;
     }
     
-    *rval = py2js(pycx, ret);
-    if(*rval == JSVAL_VOID)
+    rval = py2js(pycx, ret);
+    JS_SET_RVAL(jscx, vp, rval);
+
+    if(rval == JSVAL_VOID)
     {
         JS_ReportError(jscx, "Failed to convert Python return value.");
         goto error;
@@ -319,7 +322,7 @@ success:
 }
 
 JSBool
-js_ctor(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
+js_ctor(JSContext* jscx, uintN argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -327,7 +330,9 @@ js_ctor(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
     PyObject* ret = NULL;
     PyObject* attrcheck = NULL;
     JSBool jsret = JS_FALSE;
-    
+    jsval *argv = JS_ARGV(jscx, vp);
+    jsval rval;
+
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
     {
@@ -365,12 +370,14 @@ js_ctor(JSContext* jscx, JSObject* jsobj, uintN argc, jsval* argv, jsval* rval)
         goto error;
     }
     
-    *rval = py2js(pycx, ret);
-    if(*rval == JSVAL_VOID)
+    rval = py2js(pycx, ret);
+    if(rval == JSVAL_VOID)
     {
         JS_ReportError(jscx, "Failed to convert Python return value.");
         goto error;
     }
+
+    JS_SET_RVAL(jscx, vp, rval);
 
     jsret = JS_TRUE;
     goto success;
@@ -420,14 +427,12 @@ create_class(Context* cx, PyObject* pyobj)
     jsclass->resolve = JS_ResolveStub;
     jsclass->convert = JS_ConvertStub;
     jsclass->finalize = js_finalize;
-    jsclass->getObjectOps = NULL;
     jsclass->checkAccess = NULL;
     jsclass->call = js_call;
     jsclass->construct = js_ctor;
     jsclass->xdrObject = NULL;
     jsclass->hasInstance = NULL;
     jsclass->mark = NULL;
-    jsclass->reserveSlots = NULL;
     
     curr = HashCObj_FromVoidPtr(jsclass);
     if(curr == NULL) goto error;

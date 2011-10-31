@@ -87,10 +87,7 @@ def nspr_config(config=None):
     return pkg_config("nspr", config)
 
 def js_config(config=None):
-    config = pkg_config("mozilla-js", config)
-    if "-DJS_THREADSAFE" not in config["extra_compile_args"]:
-        raise SystemError("Unable to link against a library that was "
-            "compiled without -DJS_THREADSAFE");
+    config = pkg_config("mozjs185", config)
     return config
 
 def platform_config():
@@ -105,7 +102,6 @@ def platform_config():
     # Build our configuration
     config = {
         "extra_compile_args": [
-            "-DJS_THREADSAFE",
             "-DPOSIX_SOURCE",
             "-D_BSD_SOURCE",
             "-Wno-strict-prototypes" # Disable copius JS warnings

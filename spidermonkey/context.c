@@ -10,26 +10,26 @@
 
 #include <time.h> // After spidermonkey.h so after Python.h
 
-#include <jsobj.h>
-#include <jscntxt.h>
+//#include <jsobj.h>
+//#include <jscntxt.h>
 
 // Forward decl for add_prop
-JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* rval);
+JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* rval);
 
 JSBool
-add_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* rval)
+add_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
 {
     JSObject* obj = NULL;
 
     if(JSVAL_IS_NULL(*rval) || !JSVAL_IS_OBJECT(*rval)) return JS_TRUE;
 
     obj = JSVAL_TO_OBJECT(*rval);
-    if(JS_ObjectIsFunction(jscx, obj)) return set_prop(jscx, jsobj, key, rval);
+    if(JS_ObjectIsFunction(jscx, obj)) return set_prop(jscx, jsobj, key, JS_TRUE, rval);
     return JS_TRUE;
 }
 
 JSBool
-del_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* rval)
+del_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -74,7 +74,7 @@ done:
 }
 
 JSBool
-get_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* rval)
+get_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -122,7 +122,7 @@ done:
 }
 
 JSBool
-set_prop(JSContext* jscx, JSObject* jsobj, jsval key, jsval* rval)
+set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -162,7 +162,7 @@ done:
 }
 
 JSBool
-resolve(JSContext* jscx, JSObject* jsobj, jsval key)
+resolve(JSContext* jscx, JSObject* jsobj, jsid key)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -200,8 +200,8 @@ resolve(JSContext* jscx, JSObject* jsobj, jsval key)
         goto done;
     }
 
-    if(!js_DefineProperty(jscx, pycx->root, pid, JSVAL_VOID, NULL, NULL,
-                            JSPROP_SHARED, NULL))
+    if(!JS_DefinePropertyById(jscx, pycx->root, pid, JSVAL_VOID, NULL, NULL,
+                            JSPROP_SHARED))
     {
         JS_ReportError(jscx, "Failed to define property.");
         goto done;
@@ -231,7 +231,7 @@ js_global_class = {
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 JSBool
-branch_cb(JSContext* jscx, JSScript* script)
+branch_cb(JSContext* jscx)
 {
     Context* pycx = (Context*) JS_GetContextPrivate(jscx);
     time_t now = time(NULL);
@@ -257,15 +257,20 @@ branch_cb(JSContext* jscx, JSScript* script)
 
     pycx->branch_count = 0;
 
-    if(pycx->max_heap > 0 && jscx->runtime->gcBytes > pycx->max_heap)
+    if(pycx->max_heap > 0)
     {
-        // First see if garbage collection gets under the threshold.
-        JS_GC(jscx);
-        if(jscx->runtime->gcBytes > pycx->max_heap)
-        {
-            PyErr_NoMemory();
-            return JS_FALSE;
-        }
+	int gcbytes = JS_GetGCParameter(pycx->rt->rt, JSGC_BYTES);
+	if (gcbytes > pycx->max_heap)
+	{
+	    // First see if garbage collection gets under the threshold.
+	    JS_GC(jscx);
+	    gcbytes = JS_GetGCParameter(pycx->rt->rt, JSGC_BYTES);
+	    if(gcbytes > pycx->max_heap)
+	    {
+		PyErr_NoMemory();
+		return JS_FALSE;
+	    }
+	}
     }
 
     if(
@@ -380,7 +385,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     self->start_time = 0;
     self->max_heap = 0;
 
-    JS_SetBranchCallback(self->cx, branch_cb);
+    JS_SetOperationCallback(self->cx, branch_cb);
     JS_SetErrorReporter(self->cx, report_error_cb);
 
     jsopts = JS_GetOptions(self->cx);
@@ -453,7 +458,7 @@ Context_add_global(Context* self, PyObject* args, PyObject* kwargs)
     jsv = py2js(self, pyval);
     if(jsv == JSVAL_VOID) goto error;
 
-    if(!js_SetProperty(self->cx, self->root, kid, &jsv))
+    if(!JS_SetPropertyById(self->cx, self->root, kid, &jsv))
     {
         PyErr_SetString(PyExc_AttributeError, "Failed to set global property.");
         goto error;
@@ -488,7 +493,7 @@ Context_rem_global(Context* self, PyObject* args, PyObject* kwargs)
         PyErr_SetString(JSError, "Failed to create key id.");
     }
 
-    if(!js_GetProperty(self->cx, self->root, kid, &jsv))
+    if(!JS_GetPropertyById(self->cx, self->root, kid, &jsv))
     {
         PyErr_SetString(JSError, "Failed to get global property.");
         goto error;
@@ -497,7 +502,7 @@ Context_rem_global(Context* self, PyObject* args, PyObject* kwargs)
     ret = js2py(self, jsv);
     if(ret == NULL) goto error;
     
-    if(!js_DeleteProperty(self->cx, self->root, kid, &jsv))
+    if(!JS_DeletePropertyById(self->cx, self->root, kid))
     {
         PyErr_SetString(JSError, "Failed to remove global property.");
         goto error;
@@ -557,7 +562,7 @@ Context_execute(Context* self, PyObject* args, PyObject* kwargs)
     JSContext* cx = NULL;
     JSObject* root = NULL;
     JSString* script = NULL;
-    jschar* schars = NULL;
+    const jschar* schars = NULL;
     JSBool started_counter = JS_FALSE;
     char *fname = "<anonymous JavaScript>";
     unsigned int lineno = 1;
@@ -575,7 +580,7 @@ Context_execute(Context* self, PyObject* args, PyObject* kwargs)
     script = py2js_string_obj(self, obj);
     if(script == NULL) goto error;
 
-    schars = JS_GetStringChars(script);
+    schars = JS_GetStringCharsZ(self->cx, script);
     slen = JS_GetStringLength(script);
     
     cx = self->cx;

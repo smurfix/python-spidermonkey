@@ -12,7 +12,9 @@
 #include <Python.h>
 #include "structmember.h"
 
+#pragma GCC diagnostic ignored "-Wstrict-prototypes"
 #include <jsapi.h>
+#pragma GCC diagnostic warning "-Wstrict-prototypes"
 
 #include "runtime.h"
 #include "context.h"
