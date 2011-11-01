@@ -357,7 +357,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     JS_SetContextPrivate(self->cx, self);
 
     // Setup the root of the property lookup doodad.
-    self->root = JS_NewObject(self->cx, &js_global_class, NULL, NULL);
+    self->root = JS_NewCompartmentAndGlobalObject(self->cx, &js_global_class, NULL);
     if(self->root == NULL)
     {
         PyErr_SetString(PyExc_RuntimeError, "Error creating root object.");

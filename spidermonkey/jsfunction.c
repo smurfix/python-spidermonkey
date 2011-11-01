@@ -23,7 +23,7 @@ js2py_function(Context* cx, jsval val, jsval parent)
     if(ret == NULL) goto error;
 
     ret->parent = parent;
-    if(!JS_AddRoot(cx->cx, &(ret->parent)))
+    if(!JS_AddValueRoot(cx->cx, &(ret->parent)))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to add GC root.");
         goto error;
@@ -44,7 +44,7 @@ Function_dealloc(Function* self)
     if(self->parent != JSVAL_VOID)
     {
         JS_BeginRequest(self->obj.cx->cx);
-        JS_RemoveRoot(self->obj.cx->cx, &(self->parent));
+        JS_RemoveValueRoot(self->obj.cx->cx, &(self->parent));
         JS_EndRequest(self->obj.cx->cx);
     }
 

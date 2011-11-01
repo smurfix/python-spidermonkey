@@ -265,6 +265,7 @@ js_call(JSContext* jscx, uintN argc, jsval* vp)
     JSBool jsret = JS_FALSE;
     jsval rval;
     jsval *argv = JS_ARGV(jscx, vp);
+    jsval funcobj = JS_CALLEE(jscx, vp);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -273,7 +274,7 @@ js_call(JSContext* jscx, uintN argc, jsval* vp)
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(argv[-2]));
+    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(funcobj));
     
     if(!PyCallable_Check(pyobj))
     {
@@ -331,6 +332,7 @@ js_ctor(JSContext* jscx, uintN argc, jsval* vp)
     PyObject* attrcheck = NULL;
     JSBool jsret = JS_FALSE;
     jsval *argv = JS_ARGV(jscx, vp);
+    jsval funcobj = JS_CALLEE(jscx, vp);
     jsval rval;
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
@@ -340,7 +342,7 @@ js_ctor(JSContext* jscx, uintN argc, jsval* vp)
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(argv[-2]));
+    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(funcobj));
     
     if(!PyCallable_Check(pyobj))
     {

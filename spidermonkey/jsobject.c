@@ -56,7 +56,7 @@ make_object(PyTypeObject* type, Context* cx, jsval val)
     wrapped->val = val;
     wrapped->obj = obj;
 
-    if(!JS_AddRoot(cx->cx, &(wrapped->val)))
+    if(!JS_AddValueRoot(cx->cx, &(wrapped->val)))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to set GC root.");
         goto error;
@@ -116,7 +116,7 @@ Object_dealloc(Object* self)
     if(self->val != JSVAL_VOID)
     {
         JS_BeginRequest(self->cx->cx);
-        JS_RemoveRoot(self->cx->cx, &(self->val));
+        JS_RemoveValueRoot(self->cx->cx, &(self->val));
         JS_EndRequest(self->cx->cx);
     }
    
@@ -128,7 +128,7 @@ Object_repr(Object* self)
 {
     //jsval val;
     JSString* repr = NULL;
-    jschar* rchars = NULL;
+    const jschar* rchars = NULL;
     size_t rlen;
     
     JS_BeginRequest(self->cx->cx);
@@ -141,7 +141,7 @@ Object_repr(Object* self)
         return NULL;
     }
 
-    rchars = JS_GetStringChars(repr);
+    rchars = JS_GetStringCharsZ(self->cx->cx, repr);
     rlen = JS_GetStringLength(repr);
 
     JS_EndRequest(self->cx->cx);
@@ -195,7 +195,7 @@ Object_getitem(Object* self, PyObject* key)
         goto done;
     }
     
-    if(!js_GetProperty(self->cx->cx, self->obj, pid, &pval))
+    if(!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval))
     {
         PyErr_SetString(PyExc_AttributeError, "Failed to get property.");
         goto done;
@@ -232,7 +232,7 @@ Object_setitem(Object* self, PyObject* key, PyObject* val)
         vval = py2js(self->cx, val);
         if(vval == JSVAL_VOID) goto done;
 
-        if(!js_SetProperty(self->cx->cx, self->obj, pid, &vval))
+        if(!JS_SetPropertyById(self->cx->cx, self->obj, pid, &vval))
         {
             PyErr_SetString(PyExc_AttributeError, "Failed to set property.");
             goto done;
@@ -240,7 +240,7 @@ Object_setitem(Object* self, PyObject* key, PyObject* val)
     }
     else
     {
-        if(!js_DeleteProperty(self->cx->cx, self->obj, pid, &vval))
+        if(!JS_DeletePropertyById(self->cx->cx, self->obj, pid))
         {
             PyErr_SetString(PyExc_AttributeError, "Failed to delete property.");
             goto done;
@@ -310,7 +310,7 @@ Object_rich_cmp(Object* self, PyObject* other, int op)
             goto error;
         }
 
-        if(!js_GetProperty(self->cx->cx, self->obj, pid, &pval))
+        if(!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval))
         {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get property.");
             goto error;

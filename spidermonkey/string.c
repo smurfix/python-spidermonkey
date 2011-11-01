@@ -72,7 +72,7 @@ PyObject*
 js2py_string(Context* cx, jsval val)
 {
     JSString* str;
-    jschar* bytes;
+    const jschar* bytes;
     size_t len;
 
     if(!JSVAL_IS_STRING(val))
@@ -83,7 +83,7 @@ js2py_string(Context* cx, jsval val)
 
     str = JSVAL_TO_STRING(val);
     len = JS_GetStringLength(str);
-    bytes = JS_GetStringChars(str);
+    bytes = JS_GetStringCharsZ(cx->cx, str);
 
     return PyUnicode_Decode((const char*) bytes, len*2, "utf-16", "strict");
 }

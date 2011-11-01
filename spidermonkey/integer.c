@@ -32,19 +32,8 @@ long2js_integer(Context* cx, long pyval)
 {
     jsval ret = JSVAL_VOID;
 
-    if(INT_FITS_IN_JSVAL(pyval))
-    {
-        ret = INT_TO_JSVAL(pyval);
-        goto done;
-    }
-    
-    if(!JS_NewNumberValue(cx->cx, pyval, &ret))
-    {
-        PyErr_SetString(PyExc_ValueError, "Failed to convert number.");
-        goto done;
-    }
+    ret = INT_TO_JSVAL(pyval);
 
-done:
     return ret;
 }
 

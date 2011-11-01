@@ -29,7 +29,7 @@ Iterator_Wrap(Context* cx, JSObject* obj)
     if(self->iter == NULL) goto error;
 
     self->root = OBJECT_TO_JSVAL(self->iter);
-    if(!JS_AddRoot(cx->cx, &(self->root)))
+    if(!JS_AddValueRoot(cx->cx, &(self->root)))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to set GC root.");
         goto error;
@@ -81,7 +81,7 @@ Iterator_dealloc(Iterator* self)
     if(self->iter != NULL)
     {
         JS_BeginRequest(self->cx->cx);
-        JS_RemoveRoot(self->cx->cx, &(self->root));
+        JS_RemoveValueRoot(self->cx->cx, &(self->root));
         JS_EndRequest(self->cx->cx);
     }
    
