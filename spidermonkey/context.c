@@ -14,12 +14,15 @@
 //#include <jscntxt.h>
 
 // Forward decl for add_prop
-JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* rval);
+JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval);
 
 JSBool
-add_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
+add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     JSObject* obj = NULL;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     if(JSVAL_IS_NULL(*rval) || !JSVAL_IS_OBJECT(*rval)) return JS_TRUE;
 
@@ -29,12 +32,15 @@ add_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
 }
 
 JSBool
-del_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
+del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
     JSBool ret = JS_FALSE;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -74,12 +80,15 @@ done:
 }
 
 JSBool
-get_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* rval)
+get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
     JSBool ret = JS_FALSE;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -122,12 +131,15 @@ done:
 }
 
 JSBool
-set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* rval)
+set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
     JSBool ret = JS_FALSE;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -162,12 +174,15 @@ done:
 }
 
 JSBool
-resolve(JSContext* jscx, JSObject* jsobj, jsid key)
+resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     jsid pid;
     JSBool ret = JS_FALSE;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)

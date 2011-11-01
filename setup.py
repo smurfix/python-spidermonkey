@@ -33,11 +33,14 @@ import ez_setup
 ez_setup.use_setuptools()
 from setuptools import setup, Extension
 
+PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug/dist")
+
 DEBUG = "--debug" in sys.argv
 USE_SYSTEM_LIB = "--system-library" in sys.argv
+USE_PREBUILT = "--prebuilt-library" in sys.argv
 
 def find_sources(extensions=(".c", ".cpp")):
-    if USE_SYSTEM_LIB:
+    if USE_SYSTEM_LIB or USE_PREBUILT:
         return [
             fname
             for ext in extensions
@@ -107,13 +110,19 @@ def platform_config():
             "-Wno-strict-prototypes" # Disable copius JS warnings
         ],
         "include_dirs": [
-            "spidermonkey/libjs",
             "spidermonkey/%s-%s" % (sysname, machine)
         ],
         "library_dirs": [],
         "libraries": [],
         "extra_link_args": []
     }
+
+    if USE_PREBUILT:
+        config["include_dirs"] += [os.path.join(PREBUILT_PATH, "include")]
+        config["library_dirs"] += [os.path.join(PREBUILT_PATH, "lib")]
+        config["libraries"] += ["js_static", "stdc++"]
+    else:
+        config["include_dirs"] += ["spidermonkey/libjs"]
 
     # Debug builds are useful for finding errors in
     # the request counting semantics for Spidermonkey
@@ -142,6 +151,8 @@ Distribution.global_options.append(("debug", None,
                     "Build a DEBUG version of spidermonkey."))
 Distribution.global_options.append(("system-library", None,
                     "Link against an installed system library."))
+Distribution.global_options.append(("prebuilt-library", None,
+                    "Link against prebuilt library in %s." % PREBUILT_PATH))
 
 setup(
     name = "python-spidermonkey",

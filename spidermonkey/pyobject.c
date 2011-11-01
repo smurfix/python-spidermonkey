@@ -31,19 +31,22 @@ get_py_obj(JSContext* cx, JSObject* obj)
 }
 
 JSBool
-js_add_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
+js_add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
 {
     return JS_TRUE;
 }
 
 JSBool
-js_del_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
+js_del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
     PyObject* pykey = NULL;
     JSBool ret = JS_FALSE;
-    
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
+
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
     {
@@ -79,7 +82,7 @@ success:
 }
 
 JSBool
-js_get_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
+js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -88,6 +91,9 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid key, jsval* val)
     PyObject* pyval = NULL;
     JSBool ret = JS_FALSE;
     const char* data;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -151,13 +157,16 @@ done:
 }
 
 JSBool
-js_set_prop(JSContext* jscx, JSObject* jsobj, jsid key, JSBool strict, jsval* val)
+js_set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* val)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
     JSBool ret = JS_FALSE;
+    jsval key;
+
+    JS_IdToValue(jscx, keyid, &key);
     
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
@@ -403,7 +412,7 @@ create_class(Context* cx, PyObject* pyobj)
     curr = Context_get_class(cx, pyobj->ob_type->tp_name);
     if(curr != NULL) return (JSClass*) HashCObj_AsVoidPtr(curr);
 
-    jsclass = (JSClass*) malloc(sizeof(JSClass));
+    jsclass = (JSClass*) calloc(1, sizeof(JSClass));
     if(jsclass == NULL)
     {
         PyErr_NoMemory();

@@ -26,7 +26,7 @@ make_object(PyTypeObject* type, Context* cx, jsval val)
 
     // Unwrapping if its wrapped.
     obj = JSVAL_TO_OBJECT(val);
-    klass = JS_GetClass(cx->cx, obj);
+    klass = JS_GET_CLASS(cx->cx, obj);
     if(klass != NULL && (klass->flags & flags) == flags)
     {
         if(JS_GetReservedSlot(cx->cx, obj, 0, &priv))

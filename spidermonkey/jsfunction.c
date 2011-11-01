@@ -70,7 +70,7 @@ Function_call(Function* self, PyObject* args, PyObject* kwargs)
     argc = PySequence_Length(args);
     if(argc < 0) goto error;
     
-    argv = malloc(sizeof(jsval) * argc);
+    argv = calloc(argc, sizeof(jsval));
     if(argv == NULL)
     {
         PyErr_NoMemory();
