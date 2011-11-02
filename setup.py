@@ -36,8 +36,9 @@ from setuptools import setup, Extension
 PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug/dist")
 
 DEBUG = "--debug" in sys.argv
-USE_SYSTEM_LIB = "--system-library" in sys.argv
+USE_LOCAL_LIB = "--local-library" in sys.argv
 USE_PREBUILT = "--prebuilt-library" in sys.argv
+USE_SYSTEM_LIB = not (USE_LOCAL_LIB or USE_PREBUILT)
 
 def find_sources(extensions=(".c", ".cpp")):
     if USE_SYSTEM_LIB or USE_PREBUILT:
@@ -149,8 +150,8 @@ def platform_config():
 
 Distribution.global_options.append(("debug", None,
                     "Build a DEBUG version of spidermonkey."))
-Distribution.global_options.append(("system-library", None,
-                    "Link against an installed system library."))
+Distribution.global_options.append(("local-library", None,
+                    "Link against a local copy of the library (deprecated)."))
 Distribution.global_options.append(("prebuilt-library", None,
                     "Link against prebuilt library in %s." % PREBUILT_PATH))
 

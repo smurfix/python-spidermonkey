@@ -23,7 +23,7 @@ js2py_function(Context* cx, jsval val, jsval parent)
     if(ret == NULL) goto error;
 
     ret->parent = parent;
-    if(!JS_AddValueRoot(cx->cx, &(ret->parent)))
+    if(!JS_AddNamedValueRoot(cx->cx, &(ret->parent), "js2py_function"))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to add GC root.");
         goto error;

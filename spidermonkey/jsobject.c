@@ -13,38 +13,10 @@ make_object(PyTypeObject* type, Context* cx, jsval val)
 {
     Object* wrapped = NULL;
     PyObject* tpl = NULL;
-    PyObject* hashable = NULL;
     PyObject* ret = NULL;
-    void* raw = NULL;
-    uint32 flags = JSCLASS_HAS_RESERVED_SLOTS(1);
-    JSClass* klass = NULL;
-    JSObject* obj = NULL;
-    jsval priv;
-    int found;
+    JSObject* obj = JSVAL_TO_OBJECT(val);
 
     JS_BeginRequest(cx->cx);
-
-    // Unwrapping if its wrapped.
-    obj = JSVAL_TO_OBJECT(val);
-    klass = JS_GET_CLASS(cx->cx, obj);
-    if(klass != NULL && (klass->flags & flags) == flags)
-    {
-        if(JS_GetReservedSlot(cx->cx, obj, 0, &priv))
-        {
-            raw = (PyObject*) JSVAL_TO_PRIVATE(priv);
-            hashable = HashCObj_FromVoidPtr(raw);
-            if(hashable == NULL) goto error;
-
-            found = Context_has_object(cx, hashable);
-            if(found < 0) goto error;
-            if(found > 0)
-            {
-                ret = (PyObject*) raw;
-                Py_INCREF(ret);
-                goto success;
-            }
-        }
-    }
 
     // Wrap JS value
     tpl = Py_BuildValue("(O)", cx);
@@ -56,7 +28,7 @@ make_object(PyTypeObject* type, Context* cx, jsval val)
     wrapped->val = val;
     wrapped->obj = obj;
 
-    if(!JS_AddValueRoot(cx->cx, &(wrapped->val)))
+    if(!JS_AddNamedValueRoot(cx->cx, &(wrapped->val), "make_object"))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to set GC root.");
         goto error;

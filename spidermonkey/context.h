@@ -23,6 +23,7 @@ typedef struct {
     JSObject* root;
     PyDictObject* classes;
     PySetObject* objects;
+    PySetObject* root_objects;
     uint32 branch_count;
     long max_heap;
     time_t max_time;
@@ -34,9 +35,7 @@ int Context_add_class(Context* cx, const char* key, PyObject* val);
 
 int Context_has_access(Context*, JSContext*, PyObject*, PyObject*);
 
-int Context_has_object(Context* cx, PyObject* val);
 int Context_add_object(Context* cx, PyObject* val);
-int Context_rem_object(Context* cx, PyObject* val);
 
 extern PyTypeObject _ContextType;
 

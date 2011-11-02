@@ -58,6 +58,7 @@ PyObject*
 js2py_with_parent(Context* cx, jsval val, jsval parent)
 {
     JSType vtype = JS_TypeOfValue(cx->cx, val);
+    PyObject* unwrapped;
 
     /*
         There's not JSType for null. Or rather, its
@@ -87,7 +88,15 @@ js2py_with_parent(Context* cx, jsval val, jsval parent)
         if(JSVAL_IS_INT(val)) return js2py_integer(cx, val);
         else return js2py_double(cx, val);
     }
-    else if(vtype == JSTYPE_FUNCTION)
+
+    /* Now try to unwrap any incoming object in so we don't rewrap our own objects being passed around. */
+
+    unwrapped = unwrap_pyobject(cx, val);
+
+    if (unwrapped != NULL)
+	return unwrapped;
+
+    if(vtype == JSTYPE_FUNCTION)
     {
         return js2py_function(cx, val, parent);
     }

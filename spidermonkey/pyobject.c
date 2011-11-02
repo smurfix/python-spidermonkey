@@ -31,12 +31,6 @@ get_py_obj(JSContext* cx, JSObject* obj)
 }
 
 JSBool
-js_add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
-{
-    return JS_TRUE;
-}
-
-JSBool
 js_del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
 {
     Context* pycx = NULL;
@@ -400,6 +394,13 @@ success:
     return jsret;
 }
 
+void jsclass_finalizer(void *data)
+{
+    JSClass *jsc = (JSClass *)data;
+    free((void*)jsc->name);
+    free(jsc);
+}
+
 JSClass*
 create_class(Context* cx, PyObject* pyobj)
 {
@@ -419,7 +420,7 @@ create_class(Context* cx, PyObject* pyobj)
         goto error;
     }
    
-    classname = (char*) malloc(strlen(pyobj->ob_type->tp_name)*sizeof(char));
+    classname = (char*) malloc(strlen(pyobj->ob_type->tp_name)+sizeof(char));
     if(classname == NULL)
     {
         PyErr_NoMemory();
@@ -430,7 +431,7 @@ create_class(Context* cx, PyObject* pyobj)
     jsclass->name = classname;
     
     jsclass->flags = flags;
-    jsclass->addProperty = js_add_prop;
+    jsclass->addProperty = JS_PropertyStub;
     jsclass->delProperty = js_del_prop;
     jsclass->getProperty = js_get_prop;
     jsclass->setProperty = js_set_prop;
@@ -438,14 +439,13 @@ create_class(Context* cx, PyObject* pyobj)
     jsclass->resolve = JS_ResolveStub;
     jsclass->convert = JS_ConvertStub;
     jsclass->finalize = js_finalize;
-    jsclass->checkAccess = NULL;
+
+    /* Optional members (rest are null due to calloc()). */
+
     jsclass->call = js_call;
     jsclass->construct = js_ctor;
-    jsclass->xdrObject = NULL;
-    jsclass->hasInstance = NULL;
-    jsclass->mark = NULL;
     
-    curr = HashCObj_FromVoidPtr(jsclass);
+    curr = HashCObj_FromVoidPtr(jsclass, jsclass_finalizer);
     if(curr == NULL) goto error;
     if(Context_add_class(cx, pyobj->ob_type->tp_name, curr) < 0) goto error;
 
@@ -459,16 +459,34 @@ success:
     return ret;
 }
 
+PyObject*
+unwrap_pyobject(Context* cx, jsval val)
+{
+    PyObject* ret = NULL;
+    JSClass* klass = NULL;
+    JSObject* obj = NULL;
+
+    obj = JSVAL_TO_OBJECT(val);
+    klass = JS_GET_CLASS(cx->cx, obj);
+
+    if (klass->finalize == js_finalize)
+    {
+	ret = get_py_obj(cx->cx, obj);
+	Py_INCREF(ret);
+    }
+    return ret;
+}
+
 jsval
 py2js_object(Context* cx, PyObject* pyobj)
 {
-    PyObject* hashable = NULL;
-    PyObject* attached = NULL;
     JSClass* klass = NULL;
     JSObject* jsobj = NULL;
     jsval pyval;
     jsval ret = JSVAL_VOID;
    
+    Py_INCREF(pyobj);	/* This INCREF gets released by js_finalize */
+
     klass = create_class(cx, pyobj);
     if(klass == NULL) goto error;
 
@@ -479,25 +497,14 @@ py2js_object(Context* cx, PyObject* pyobj)
         goto error;
     }
 
-    // do the attached = pyobj dance to only DECREF if we get passed INCREF
-    attached = pyobj;
-    // INCREF for the value stored in JS
-    Py_INCREF(attached);
-    pyval = PRIVATE_TO_JSVAL(attached);
+    pyval = PRIVATE_TO_JSVAL(pyobj);
     if(!JS_SetReservedSlot(cx->cx, jsobj, 0, pyval))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to store ref'ed object.");
         goto error;
     }
 
-    hashable = HashCObj_FromVoidPtr(attached);
-    if(hashable == NULL)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to make hashable pointer.");
-        goto error;
-    }
-
-    if(Context_add_object(cx, hashable) < 0)
+    if(Context_add_object(cx, pyobj) < 0)
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to store reference.");
         goto error;
@@ -507,7 +514,7 @@ py2js_object(Context* cx, PyObject* pyobj)
     goto success;
 
 error:
-    Py_XDECREF(attached);
+    Py_XDECREF(pyobj);
 success:
     return ret;
 }

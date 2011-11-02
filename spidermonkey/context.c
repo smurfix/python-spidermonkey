@@ -352,6 +352,9 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     self->objects = (PySetObject*) PySet_New(NULL);
     if(self->objects == NULL) goto error;
 
+    self->root_objects = (PySetObject*) PySet_New(NULL);
+    if(self->root_objects == NULL) goto error;
+
     self->cx = JS_NewContext(runtime->rt, 8192);
     if(self->cx == NULL)
     {
@@ -436,6 +439,13 @@ Context_init(Context* self, PyObject* args, PyObject* kwargs)
 void
 Context_dealloc(Context* self)
 {
+    while (PySet_GET_SIZE(self->root_objects))
+    {
+	PyObject* inroot = PySet_Pop((PyObject *)self->root_objects);
+	/* We need to undo the effect of adding this object to the root, but not sure how since it's not known */
+	Py_DECREF(inroot);
+    }
+    
     if(self->cx != NULL)
     {
         JS_DestroyContext(self->cx);
@@ -444,6 +454,7 @@ Context_dealloc(Context* self)
     Py_XDECREF(self->global);
     Py_XDECREF(self->access);
     Py_XDECREF(self->objects);
+    Py_XDECREF(self->root_objects);
     Py_XDECREF(self->classes);
     Py_XDECREF(self->rt);
 }
@@ -823,19 +834,27 @@ Context_add_class(Context* cx, const char* key, PyObject* val)
 }
 
 int
-Context_has_object(Context* cx, PyObject* val)
+Context_add_root(Context* cx, PyObject* val, const char *idstring)
 {
-    return PySet_Contains((PyObject*) cx->objects, val);
+    if (PySet_Contains((PyObject*) cx->root_objects, val) > 0)
+    {
+	Py_DECREF(val);
+	return 0;
+    }
+
+    return PySet_Add((PyObject*) cx->root_objects, val);
+}
+
+void 
+addobject_decref(void *ptr)
+{
+    PyObject* pyo = (PyObject*) ptr;
+    Py_DECREF(pyo);
 }
 
 int
 Context_add_object(Context* cx, PyObject* val)
 {
-    return PySet_Add((PyObject*) cx->objects, val);
-}
-
-int
-Context_rem_object(Context* cx, PyObject* val)
-{
-    return PySet_Discard((PyObject*) cx->objects, val);
+    PyObject* wrapped = HashCObj_FromVoidPtr(val, addobject_decref);
+    return PySet_Add((PyObject*) cx->objects, wrapped);
 }

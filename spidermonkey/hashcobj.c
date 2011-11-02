@@ -9,13 +9,14 @@
 #include "spidermonkey.h"
 
 PyObject*
-HashCObj_FromVoidPtr(void *cobj)
+HashCObj_FromVoidPtr(void *cobj, HASHCOBJ_FINALIZER finalizer)
 {
     HashCObj* self = NULL;
 
     self = PyObject_NEW(HashCObj, HashCObjType);
     if(self == NULL) goto error;
     self->cobj = cobj;
+    self->finalizer = finalizer;
 
     goto success;
 
@@ -77,13 +78,20 @@ HashCObj_hash(HashCObj* self)
     return _Py_HashPointer(self->cobj);
 }
 
+void
+HashCObj_dealloc(HashCObj* self)
+{
+    if (self->finalizer != NULL)
+	(*self->finalizer)(self->cobj);
+}
+
 PyTypeObject _HashCObjType = {
     PyObject_HEAD_INIT(NULL)
     0,                                          /*ob_size*/
     "spidermonkey._HashCObj",                   /*tp_name*/
     sizeof(HashCObj),                           /*tp_basicsize*/
     0,                                          /*tp_itemsize*/
-    0,                                          /*tp_dealloc*/
+    (destructor)HashCObj_dealloc,		/*tp_dealloc*/
     0,                                          /*tp_print*/
     0,                                          /*tp_getattr*/
     0,                                          /*tp_setattr*/
