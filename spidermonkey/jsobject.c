@@ -139,7 +139,7 @@ Object_length(Object* self)
     cx = self->cx->cx;
     iter = JS_NewPropertyIterator(cx, self->obj);
     status = JS_NextProperty(cx, iter, &pid);
-    while(status == JS_TRUE && pid != JSVAL_VOID)
+    while(status == JS_TRUE && !JSID_IS_VOID(pid))
     {
         ret += 1;
         status = JS_NextProperty(cx, iter, &pid);
@@ -274,7 +274,7 @@ Object_rich_cmp(Object* self, PyObject* other, int op)
     cx = self->cx->cx;
     iter = JS_NewPropertyIterator(cx, self->obj);
     status = JS_NextProperty(cx, iter, &pid);
-    while(status == JS_TRUE && pid != JSVAL_VOID)
+    while(status == JS_TRUE && !JSID_IS_VOID(pid))
     {
         if(!JS_IdToValue(self->cx->cx, pid, &pkey))
         {

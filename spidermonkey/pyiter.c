@@ -96,7 +96,7 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
     JSBool ret = JS_FALSE;
     JSBool foreach = JS_FALSE;
     jsval rval;
-    JSObject *funcobj = JSVAL_TO_OBJECT(JS_CALLEE(jscx, vp));
+    JSObject *jsthis = JSVAL_TO_OBJECT(JS_THIS(jscx, vp));
 
     // For StopIteration throw
     JSObject* glbl = JS_GetGlobalObject(jscx);
@@ -109,14 +109,14 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
         goto done;
     }
 
-    iter = get_js_slot(jscx, funcobj, 1);
+    iter = get_js_slot(jscx, jsthis, 1);
     if(!PyIter_Check(iter))
     {
         JS_ReportError(jscx, "Object is not an iterator.");
         goto done;
     }
 
-    pyobj = get_js_slot(jscx, funcobj, 0);
+    pyobj = get_js_slot(jscx, jsthis, 0);
     if(pyobj == NULL)
     {
         JS_ReportError(jscx, "Failed to find iterated object.");
@@ -141,7 +141,7 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
         goto done;
     }
 
-    if(!is_for_each(jscx, funcobj, &foreach))
+    if(!is_for_each(jscx, jsthis, &foreach))
     {
         JS_ReportError(jscx, "Failed to get iterator flag.");
         goto done;
@@ -185,7 +185,8 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     jsval rval;
     long maxval = -1;
     long currval = -1;
-    JSObject *jsthis = JSVAL_TO_OBJECT(JS_THIS(jscx, vp));
+    jsval valthis = JS_THIS(jscx, vp);
+    JSObject *jsthis = JSVAL_TO_OBJECT(valthis);
 
     // For StopIteration throw
     JSObject* glbl = JS_GetGlobalObject(jscx);
