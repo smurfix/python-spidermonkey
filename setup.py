@@ -33,7 +33,7 @@ import ez_setup
 ez_setup.use_setuptools()
 from setuptools import setup, Extension
 
-PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug/dist")
+PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug")
 
 DEBUG = "--debug" in sys.argv
 USE_LOCAL_LIB = "--local-library" in sys.argv

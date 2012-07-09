@@ -116,7 +116,7 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
         if(strcmp("__iterator__", data) == 0)
         {
             if(!new_py_iter(pycx, pyobj, val)) goto done;
-            if(*val != JSVAL_VOID)
+            if(!JSVAL_IS_VOID(*val))
             {
                 ret = JS_TRUE;
                 goto done;
@@ -139,7 +139,7 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
     }
 
     *val = py2js(pycx, pyval);
-    if(*val == JSVAL_VOID) goto done;
+    if(JSVAL_IS_VOID(*val)) goto done;
     ret = JS_TRUE;
 
 done:
@@ -308,7 +308,7 @@ js_call(JSContext* jscx, uintN argc, jsval* vp)
     rval = py2js(pycx, ret);
     JS_SET_RVAL(jscx, vp, rval);
 
-    if(rval == JSVAL_VOID)
+    if(JSVAL_IS_VOID(rval))
     {
         JS_ReportError(jscx, "Failed to convert Python return value.");
         goto error;
@@ -376,7 +376,7 @@ js_ctor(JSContext* jscx, uintN argc, jsval* vp)
     }
     
     rval = py2js(pycx, ret);
-    if(rval == JSVAL_VOID)
+    if(JSVAL_IS_VOID(rval))
     {
         JS_ReportError(jscx, "Failed to convert Python return value.");
         goto error;

@@ -109,7 +109,7 @@ Iterator_next(Iterator* self)
         goto done;
     }
 
-    if(propname != JSVAL_VOID)
+    if(!JSVAL_IS_VOID(propname))
     {
         ret = js2py(self->cx, propname);
     }

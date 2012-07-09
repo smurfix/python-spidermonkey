@@ -85,7 +85,7 @@ Object_init(Object* self, PyObject* args, PyObject* kwargs)
 void
 Object_dealloc(Object* self)
 {
-    if(self->val != JSVAL_VOID)
+    if(!JSVAL_IS_VOID(self->val))
     {
         JS_BeginRequest(self->cx->cx);
         JS_RemoveValueRoot(self->cx->cx, &(self->val));
@@ -159,7 +159,7 @@ Object_getitem(Object* self, PyObject* key)
     JS_BeginRequest(self->cx->cx);
 
     pval = py2js(self->cx, key);
-    if(pval == JSVAL_VOID) return NULL;
+    if(JSVAL_IS_VOID(pval)) return NULL;
    
     if(!JS_ValueToId(self->cx->cx, pval, &pid))
     {
@@ -191,7 +191,7 @@ Object_setitem(Object* self, PyObject* key, PyObject* val)
     JS_BeginRequest(self->cx->cx);
 
     pval = py2js(self->cx, key);
-    if(pval == JSVAL_VOID) goto done;
+    if(JSVAL_IS_VOID(pval)) goto done;
    
     if(!JS_ValueToId(self->cx->cx, pval, &pid))
     {
@@ -202,7 +202,7 @@ Object_setitem(Object* self, PyObject* key, PyObject* val)
     if(val != NULL)
     {
         vval = py2js(self->cx, val);
-        if(vval == JSVAL_VOID) goto done;
+        if(JSVAL_IS_VOID(vval)) goto done;
 
         if(!JS_SetPropertyById(self->cx->cx, self->obj, pid, &vval))
         {
@@ -218,7 +218,7 @@ Object_setitem(Object* self, PyObject* key, PyObject* val)
             goto done;
         }
 
-        if(vval == JSVAL_VOID)
+        if(JSVAL_IS_VOID(vval))
         {
             PyErr_SetString(PyExc_AttributeError, "Unable to delete property.");
             goto done;

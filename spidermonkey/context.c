@@ -20,14 +20,11 @@ JSBool
 add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     JSObject* obj = NULL;
-    jsval key;
-
-    JS_IdToValue(jscx, keyid, &key);
 
     if(JSVAL_IS_NULL(*rval) || !JSVAL_IS_OBJECT(*rval)) return JS_TRUE;
 
     obj = JSVAL_TO_OBJECT(*rval);
-    if(JS_ObjectIsFunction(jscx, obj)) return set_prop(jscx, jsobj, key, JS_TRUE, rval);
+    if(JS_ObjectIsFunction(jscx, obj)) return set_prop(jscx, jsobj, keyid, JS_TRUE, rval);
     return JS_TRUE;
 }
 
@@ -121,7 +118,7 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     }
 
     *rval = py2js(pycx, pyval);
-    if(*rval == JSVAL_VOID) goto done;
+    if(JSVAL_IS_VOID(*rval)) goto done;
     ret = JS_TRUE;
 
 done:
@@ -352,9 +349,6 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     self->objects = (PySetObject*) PySet_New(NULL);
     if(self->objects == NULL) goto error;
 
-    self->root_objects = (PySetObject*) PySet_New(NULL);
-    if(self->root_objects == NULL) goto error;
-
     self->cx = JS_NewContext(runtime->rt, 8192);
     if(self->cx == NULL)
     {
@@ -439,23 +433,16 @@ Context_init(Context* self, PyObject* args, PyObject* kwargs)
 void
 Context_dealloc(Context* self)
 {
-    while (PySet_GET_SIZE(self->root_objects))
-    {
-	PyObject* inroot = PySet_Pop((PyObject *)self->root_objects);
-	/* We need to undo the effect of adding this object to the root, but not sure how since it's not known */
-	Py_DECREF(inroot);
-    }
-    
+    Py_XDECREF(self->objects);
+    Py_XDECREF(self->global);
+    Py_XDECREF(self->access);
+    Py_XDECREF(self->classes);
+
     if(self->cx != NULL)
     {
         JS_DestroyContext(self->cx);
     }
 
-    Py_XDECREF(self->global);
-    Py_XDECREF(self->access);
-    Py_XDECREF(self->objects);
-    Py_XDECREF(self->root_objects);
-    Py_XDECREF(self->classes);
     Py_XDECREF(self->rt);
 }
 
@@ -473,7 +460,7 @@ Context_add_global(Context* self, PyObject* args, PyObject* kwargs)
     if(!PyArg_ParseTuple(args, "OO", &pykey, &pyval)) goto error;
 
     jsk = py2js(self, pykey);
-    if(jsk == JSVAL_VOID) goto error;
+    if(JSVAL_IS_VOID(jsk)) goto error;
 
     if(!JS_ValueToId(self->cx, jsk, &kid))
     {
@@ -482,7 +469,7 @@ Context_add_global(Context* self, PyObject* args, PyObject* kwargs)
     }
 
     jsv = py2js(self, pyval);
-    if(jsv == JSVAL_VOID) goto error;
+    if(JSVAL_IS_VOID(jsv)) goto error;
 
     if(!JS_SetPropertyById(self->cx, self->root, kid, &jsv))
     {
@@ -512,7 +499,7 @@ Context_rem_global(Context* self, PyObject* args, PyObject* kwargs)
     if(!PyArg_ParseTuple(args, "O", &pykey)) goto error;
 
     jsk = py2js(self, pykey);
-    if(jsk == JSVAL_VOID) goto error;
+    if(JSVAL_IS_VOID(jsk)) goto error;
 
     if(!JS_ValueToId(self->cx, jsk, &kid))
     {
@@ -651,6 +638,9 @@ success:
 PyObject*
 Context_gc(Context* self, PyObject* args, PyObject* kwargs)
 {
+    Py_DECREF(self->objects);
+    self->objects = (PySetObject*) PySet_New(NULL);
+
     JS_GC(self->cx);
 
     Py_INCREF(self);
@@ -831,18 +821,6 @@ int
 Context_add_class(Context* cx, const char* key, PyObject* val)
 {
     return PyDict_SetItemString((PyObject*) cx->classes, key, val);
-}
-
-int
-Context_add_root(Context* cx, PyObject* val, const char *idstring)
-{
-    if (PySet_Contains((PyObject*) cx->root_objects, val) > 0)
-    {
-	Py_DECREF(val);
-	return 0;
-    }
-
-    return PySet_Add((PyObject*) cx->root_objects, val);
 }
 
 void 

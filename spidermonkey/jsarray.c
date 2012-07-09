@@ -73,7 +73,7 @@ Array_set_item(Object* self, Py_ssize_t idx, PyObject* val)
     JS_BeginRequest(self->cx->cx);
 
     pval = py2js(self->cx, val);
-    if(pval == JSVAL_VOID) goto done;
+    if(JSVAL_IS_VOID(pval)) goto done;
 
     if(!JS_SetElement(self->cx->cx, self->obj, pos, &pval))
     {

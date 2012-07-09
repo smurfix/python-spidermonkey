@@ -45,8 +45,6 @@ finalize(JSContext* jscx, JSObject* jsobj)
     Py_DECREF(pyiter);
 
     JS_EndRequest(jscx);
-
-    Py_DECREF(pycx);
 }
 
 JSBool
@@ -164,7 +162,7 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
 
     JS_SET_RVAL(jscx, vp, rval);
 
-    if(rval != JSVAL_VOID) ret = JS_TRUE;
+    if(!JSVAL_IS_VOID(rval)) ret = JS_TRUE;
 
 done:
     Py_XDECREF(next);
@@ -268,7 +266,7 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     next = iter;
 
     JS_SET_RVAL(jscx, vp, rval);
-    if(rval != JSVAL_VOID) ret = JS_TRUE;
+    if(!JSVAL_IS_VOID(rval)) ret = JS_TRUE;
 
 done:
     Py_XDECREF(next);

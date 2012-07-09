@@ -64,13 +64,13 @@ js2py_with_parent(Context* cx, jsval val, jsval parent)
         There's not JSType for null. Or rather, its
         reported as Object which causes segfaults.
     */
-    if(val == JSVAL_NULL || val == JSVAL_VOID)
+    if(JSVAL_IS_NULL(val) || JSVAL_IS_VOID(val))
     {
         Py_RETURN_NONE;
     }
     else if(vtype == JSTYPE_BOOLEAN)
     {
-        if(val == JSVAL_TRUE)
+        if(JSVAL_TO_BOOLEAN(val))
         {
             Py_RETURN_TRUE;
         }

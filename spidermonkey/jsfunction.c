@@ -13,7 +13,7 @@ js2py_function(Context* cx, jsval val, jsval parent)
 {
     Function* ret = NULL;
 
-    if(parent == JSVAL_VOID || !JSVAL_IS_OBJECT(parent))
+    if(JSVAL_IS_VOID(parent) || !JSVAL_IS_OBJECT(parent))
     {
         PyErr_BadInternalCall();
         goto error;
@@ -41,7 +41,7 @@ success:
 void
 Function_dealloc(Function* self)
 {
-    if(self->parent != JSVAL_VOID)
+    if(!JSVAL_IS_VOID(self->parent))
     {
         JS_BeginRequest(self->obj.cx->cx);
         JS_RemoveValueRoot(self->obj.cx->cx, &(self->parent));
@@ -83,7 +83,7 @@ Function_call(Function* self, PyObject* args, PyObject* kwargs)
         if(item == NULL) goto error;
         
         argv[idx] = py2js(self->obj.cx, item);
-        if(argv[idx] == JSVAL_VOID) goto error;
+        if(JSVAL_IS_VOID(argv[idx])) goto error;
         Py_DECREF(item);
         item = NULL; // Prevent double decref.
     }
