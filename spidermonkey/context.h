@@ -17,7 +17,16 @@
 typedef struct {
     PyObject_HEAD
     Runtime* rt;
+
+    // Whether a weak or strong global object is passed in depends upon whether
+    // it is possible to take weak references of the passed object.  If the
+    // global cannot be referenced weakly AND if wrapped JS objects appear inside it,
+    // memory leaks generally occur because the python wrappers require the JS context,
+    // and vice-versa.  The right way to do this is to make the Context garbage-collectable
+    // and have the global object as a contained item.  Future note.
     PyObject* weakglobal;
+    PyObject* strongglobal;
+
     PyObject* access;
     JSContext* cx;
     JSObject* root;

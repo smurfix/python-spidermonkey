@@ -18,9 +18,9 @@ JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsv
 
 PyObject* get_cxglobal(Context* self)
 {
-    PyObject* ret = NULL;
+    PyObject* ret = self->strongglobal;
 
-    if (self->weakglobal == NULL || (ret = PyWeakref_GetObject(self->weakglobal)) == Py_None)
+    if (ret == NULL && (self->weakglobal == NULL || (ret = PyWeakref_GetObject(self->weakglobal)) == Py_None))
 	return NULL;
 
     // Must be certain to decref the global, since anything may cause it to disappear.
@@ -326,6 +326,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     Runtime* runtime = NULL;
     PyObject* global = NULL;
     PyObject* weakglobal = NULL;
+    PyObject* strongglobal = NULL;
     PyObject* access = NULL;
     int strict = 0;
     uint32_t jsopts;
@@ -355,8 +356,12 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
 	      goto error;
 	  }
 
-	if ((weakglobal = PyWeakref_NewRef(global, NULL)) == NULL)
-	    goto error;
+	/* If for any reason we can't create a weak reference, then make it a strong one. */
+
+	if ((weakglobal = PyWeakref_NewRef(global, NULL)) == NULL) {
+	    PyErr_Clear();
+	    strongglobal = global;
+	}
     }
 
     if(access != NULL && !PyCallable_Check(access))
@@ -414,6 +419,9 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     // have been initialized.
     self->weakglobal = weakglobal;
 
+    if (strongglobal != NULL) Py_INCREF(strongglobal);
+    self->strongglobal = strongglobal;
+
     if(access != NULL) Py_INCREF(access);
     self->access = access;
 
@@ -444,6 +452,7 @@ error:
     if(self != NULL && self->cx != NULL) JS_EndRequest(self->cx);
     Py_XDECREF(self);
     Py_XDECREF(weakglobal);
+    Py_XDECREF(strongglobal);
     self = NULL;
 
 success:
@@ -467,6 +476,7 @@ Context_dealloc(Context* self)
 
     Py_XDECREF(self->objects);
     Py_XDECREF(self->weakglobal);
+    Py_XDECREF(self->strongglobal);
     Py_XDECREF(self->access);
     Py_XDECREF(self->classes);
 
