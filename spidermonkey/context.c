@@ -16,7 +16,18 @@
 // Forward decl for add_prop
 JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval);
 
-JSBool
+PyObject* get_cxglobal(Context* self)
+{
+    PyObject* ret = NULL;
+
+    if (self->weakglobal == NULL || (ret = PyWeakref_GetObject(self->weakglobal)) == Py_None)
+	return NULL;
+
+    // Must be certain to decref the global, since anything may cause it to disappear.
+    Py_INCREF(ret);
+    return ret;
+}
+
 add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     JSObject* obj = NULL;
@@ -24,8 +35,10 @@ add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     if(JSVAL_IS_NULL(*rval) || !JSVAL_IS_OBJECT(*rval)) return JS_TRUE;
 
     obj = JSVAL_TO_OBJECT(*rval);
-    if(JS_ObjectIsFunction(jscx, obj)) return set_prop(jscx, jsobj, keyid, JS_TRUE, rval);
-    return JS_TRUE;
+    if(!JS_ObjectIsFunction(jscx, obj))
+	return JS_TRUE;
+    
+    return set_prop(jscx, jsobj, keyid, JS_TRUE, rval);
 }
 
 JSBool
@@ -34,6 +47,7 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
+    PyObject* global = NULL;
     JSBool ret = JS_FALSE;
     jsval key;
 
@@ -46,18 +60,18 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
         goto done;
     }
 
-    // Bail if there's no registered global handler.
-    if(pycx->global == NULL)
+    // Bail if there's no available global handler.
+    if ((global = get_cxglobal(pycx)) == NULL)
     {
         ret = JS_TRUE;
         goto done;
     }
     
     // Check access to python land.
-    if(Context_has_access(pycx, jscx, pycx->global, pykey) <= 0) goto done;
+    if(Context_has_access(pycx, jscx, global, pykey) <= 0) goto done;
 
     // Bail if the global doesn't have a __delitem__
-    if(!PyObject_HasAttrString(pycx->global, "__delitem__"))
+    if(!PyObject_HasAttrString(global, "__delitem__"))
     {
         ret = JS_TRUE;
         goto done;
@@ -66,11 +80,12 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     pykey = js2py(pycx, key);
     if(pykey == NULL) goto done;
 
-    if(PyObject_DelItem(pycx->global, pykey) < 0) goto done;
+    if(PyObject_DelItem(global, pykey) < 0) goto done;
 
     ret = JS_TRUE;
 
 done:
+    Py_XDECREF(global);
     Py_XDECREF(pykey);
     Py_XDECREF(pyval);
     return ret;
@@ -82,6 +97,7 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
+    PyObject* global = NULL;
     JSBool ret = JS_FALSE;
     jsval key;
 
@@ -94,8 +110,8 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
         goto done;
     }
 
-    // Bail if there's no registered global handler.
-    if(pycx->global == NULL)
+    // Bail if there's no available global handler.
+    if ((global = get_cxglobal(pycx)) == NULL)
     {
         ret = JS_TRUE;
         goto done;
@@ -104,9 +120,9 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     pykey = js2py(pycx, key);
     if(pykey == NULL) goto done;
 
-    if(Context_has_access(pycx, jscx, pycx->global, pykey) <= 0) goto done;
+    if(Context_has_access(pycx, jscx, global, pykey) <= 0) goto done;
 
-    pyval = PyObject_GetItem(pycx->global, pykey);
+    pyval = PyObject_GetItem(global, pykey);
     if(pyval == NULL)
     {
         if(PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_KeyError))
@@ -122,6 +138,7 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     ret = JS_TRUE;
 
 done:
+    Py_XDECREF(global);
     Py_XDECREF(pykey);
     Py_XDECREF(pyval);
     return ret;
@@ -133,6 +150,7 @@ set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rva
     Context* pycx = NULL;
     PyObject* pykey = NULL;
     PyObject* pyval = NULL;
+    PyObject* global = NULL;
     JSBool ret = JS_FALSE;
     jsval key;
 
@@ -145,8 +163,8 @@ set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rva
         goto done;
     }
 
-    // Bail if there's no registered global handler.
-    if(pycx->global == NULL)
+    // Bail if there's no available global handler.
+    if ((global = get_cxglobal(pycx)) == NULL)
     {
         ret = JS_TRUE;
         goto done;
@@ -155,16 +173,17 @@ set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rva
     pykey = js2py(pycx, key);
     if(pykey == NULL) goto done;
 
-    if(Context_has_access(pycx, jscx, pycx->global, pykey) <= 0) goto done;
+    if(Context_has_access(pycx, jscx, global, pykey) <= 0) goto done;
 
     pyval = js2py(pycx, *rval);
     if(pyval == NULL) goto done;
 
-    if(PyObject_SetItem(pycx->global, pykey, pyval) < 0) goto done;
+    if(PyObject_SetItem(global, pykey, pyval) < 0) goto done;
 
     ret = JS_TRUE;
 
 done:
+    Py_XDECREF(global);
     Py_XDECREF(pykey);
     Py_XDECREF(pyval);
     return ret;
@@ -175,6 +194,7 @@ resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
+    PyObject* global = NULL;
     jsid pid;
     JSBool ret = JS_FALSE;
     jsval key;
@@ -188,8 +208,8 @@ resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
         goto done;
     }
 
-    // Bail if there's no registered global handler.
-    if(pycx->global == NULL)
+    // Bail if there's no available global handler.
+    if ((global = get_cxglobal(pycx)) == NULL)
     {
         ret = JS_TRUE;
         goto done;
@@ -198,9 +218,9 @@ resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
     pykey = js2py(pycx, key);
     if(pykey == NULL) goto done;
     
-    if(Context_has_access(pycx, jscx, pycx->global, pykey) <= 0) goto done;
+    if(Context_has_access(pycx, jscx, global, pykey) <= 0) goto done;
 
-    if(!PyMapping_HasKey(pycx->global, pykey))
+    if(!PyMapping_HasKey(global, pykey))
     {
         ret = JS_TRUE;
         goto done;
@@ -222,6 +242,7 @@ resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
     ret = JS_TRUE;
 
 done:
+    Py_XDECREF(global);
     Py_XDECREF(pykey);
     return ret;
 }
@@ -304,6 +325,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     Context* self = NULL;
     Runtime* runtime = NULL;
     PyObject* global = NULL;
+    PyObject* weakglobal = NULL;
     PyObject* access = NULL;
     int strict = 0;
     uint32_t jsopts;
@@ -324,11 +346,17 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     if(access == Py_None) access = NULL;
     strict &= 1;  /* clamp at 1 */
 
-    if(global != NULL && !PyMapping_Check(global))
+    if(global != NULL)
     {
-        PyErr_SetString(PyExc_TypeError,
-                            "Global handler must provide item access.");
-        goto error;
+	if (!PyMapping_Check(global))
+	  {
+	      PyErr_SetString(PyExc_TypeError,
+			      "Global handler must provide item access.");
+	      goto error;
+	  }
+
+	if ((weakglobal = PyWeakref_NewRef(global, NULL)) == NULL)
+	    goto error;
     }
 
     if(access != NULL && !PyCallable_Check(access))
@@ -384,9 +412,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
 
     // Don't setup the global handler until after the standard classes
     // have been initialized.
-    // XXX: Does anyone know if finalize is called if new fails?
-    if(global != NULL) Py_INCREF(global);
-    self->global = global;
+    self->weakglobal = weakglobal;
 
     if(access != NULL) Py_INCREF(access);
     self->access = access;
@@ -417,6 +443,7 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
 error:
     if(self != NULL && self->cx != NULL) JS_EndRequest(self->cx);
     Py_XDECREF(self);
+    Py_XDECREF(weakglobal);
     self = NULL;
 
 success:
@@ -433,15 +460,15 @@ Context_init(Context* self, PyObject* args, PyObject* kwargs)
 void
 Context_dealloc(Context* self)
 {
-    Py_XDECREF(self->objects);
-    Py_XDECREF(self->global);
-    Py_XDECREF(self->access);
-    Py_XDECREF(self->classes);
-
     if(self->cx != NULL)
     {
         JS_DestroyContext(self->cx);
     }
+
+    Py_XDECREF(self->objects);
+    Py_XDECREF(self->weakglobal);
+    Py_XDECREF(self->access);
+    Py_XDECREF(self->classes);
 
     Py_XDECREF(self->rt);
 }

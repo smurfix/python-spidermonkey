@@ -96,10 +96,6 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
     jsval rval;
     JSObject *jsthis = JSVAL_TO_OBJECT(JS_THIS(jscx, vp));
 
-    // For StopIteration throw
-    JSObject* glbl = JS_GetGlobalObject(jscx);
-    jsval exc = JSVAL_VOID;
-
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
     {
@@ -128,14 +124,7 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
     }
     else if(next == NULL)
     {
-        if(JS_GetProperty(jscx, glbl, "StopIteration", &exc))
-        {
-            JS_SetPendingException(jscx, exc);
-        }
-        else
-        {
-            JS_ReportError(jscx, "Failed to get StopIteration object.");
-        }
+	JS_ThrowStopIteration(jscx);
         goto done;
     }
 
@@ -186,10 +175,6 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     jsval valthis = JS_THIS(jscx, vp);
     JSObject *jsthis = JSVAL_TO_OBJECT(valthis);
 
-    // For StopIteration throw
-    JSObject* glbl = JS_GetGlobalObject(jscx);
-    jsval exc = JSVAL_VOID;
-
     pycx = (Context*) JS_GetContextPrivate(jscx);
     if(pycx == NULL)
     {
@@ -222,14 +207,7 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     
     if(currval + 1 > maxval)
     {
-        if(JS_GetProperty(jscx, glbl, "StopIteration", &exc))
-        {
-            JS_SetPendingException(jscx, exc);
-        }
-        else
-        {
-            JS_ReportError(jscx, "Failed to get StopIteration object.");
-        }
+	JS_ThrowStopIteration(jscx);
         goto done;
     }
 
@@ -364,7 +342,7 @@ new_py_def_iter(Context* cx, PyObject* obj, jsval* rval)
         goto error;
     }
 
-    Py_INCREF(cx);
+    //Py_INCREF(cx); 
     *rval = OBJECT_TO_JSVAL(jsiter);
     ret = JS_TRUE;
     goto success;
@@ -423,7 +401,7 @@ new_py_seq_iter(Context* cx, PyObject* obj, jsval* rval)
         goto error;
     }
 
-    Py_INCREF(cx);
+    //Py_INCREF(cx);
     *rval = OBJECT_TO_JSVAL(jsiter);
     ret = JS_TRUE;
     goto success;
