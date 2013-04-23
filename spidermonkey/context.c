@@ -829,6 +829,12 @@ Context_has_access(Context* pycx, JSContext* jscx, PyObject* obj, PyObject* key)
     if(tpl == NULL) goto done;
 
     tmp = PyObject_Call(pycx->access, tpl, NULL);
+
+    if (tmp == NULL) {
+	Py_XDECREF(tpl);
+	return NULL;
+    }
+	
     res = PyObject_IsTrue(tmp);
 
 done:
