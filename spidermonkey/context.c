@@ -28,7 +28,7 @@ PyObject* get_cxglobal(Context* self)
     return ret;
 }
 
-add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
+JSBool add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 {
     JSObject* obj = NULL;
 
@@ -673,6 +673,61 @@ success:
 }
 
 PyObject*
+Context_compile(Context* self, PyObject* args, PyObject* kwargs)
+{
+    PyObject* obj = NULL;
+    PyObject* ret = NULL;
+    JSContext* jcx = NULL;
+    JSObject* root = NULL;
+    JSString* script = NULL;
+    const jschar* schars = NULL;
+    char *fname = "<anonymous compiled JavaScript>";
+    unsigned int lineno = 1;
+    size_t slen;
+    JSObject *rvalobj;
+
+    char *keywords[] = {"code", "filename", "lineno", NULL};
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", keywords,
+                                    &obj, &fname, &lineno))
+        goto error;
+
+    JS_BeginRequest(self->cx);
+    
+    script = py2js_string_obj(self, obj);
+    if(script == NULL) goto error;
+
+    schars = JS_GetStringCharsZ(self->cx, script);
+    slen = JS_GetStringLength(script);
+    
+    jcx = self->cx;
+    root = self->root;
+
+    if(!(rvalobj = JS_CompileUCScript(jcx, root, schars, slen, fname, lineno)))
+    {
+        if(!PyErr_Occurred())
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Script could not be compiled");
+        }
+        goto error;
+    }
+
+    if(PyErr_Occurred()) goto error;
+
+    ret = Compiled_Wrap(self, rvalobj);
+
+    JS_EndRequest(jcx);
+    JS_MaybeGC(jcx);
+    goto success;
+
+error:
+    JS_EndRequest(jcx);
+success:
+
+    return ret;
+}
+
+PyObject*
 Context_gc(Context* self, PyObject* args, PyObject* kwargs)
 {
     Py_DECREF(self->objects);
@@ -748,6 +803,12 @@ static PyMethodDef Context_methods[] = {
         (PyCFunction)Context_execute,
         METH_VARARGS | METH_KEYWORDS,
         "Execute JavaScript source code."
+    },
+    {
+        "compile",
+        (PyCFunction)Context_compile,
+        METH_VARARGS | METH_KEYWORDS,
+        "Compile JavaScript source code."
     },
     {
         "gc",
@@ -830,12 +891,8 @@ Context_has_access(Context* pycx, JSContext* jscx, PyObject* obj, PyObject* key)
 
     tmp = PyObject_Call(pycx->access, tpl, NULL);
 
-    if (tmp == NULL) {
-	Py_XDECREF(tpl);
-	return NULL;
-    }
-	
-    res = PyObject_IsTrue(tmp);
+    if (tmp != NULL)
+	res = PyObject_IsTrue(tmp);
 
 done:
     Py_XDECREF(tpl);

@@ -28,6 +28,7 @@
 
 #include "jsobject.h"
 #include "jsarray.h"
+#include "jscompiled.h"
 #include "jsfunction.h"
 #include "jsiterator.h"
 
@@ -42,6 +43,7 @@ extern PyTypeObject* ContextType;
 extern PyTypeObject* ClassType;
 extern PyTypeObject* ObjectType;
 extern PyTypeObject* ArrayType;
+extern PyTypeObject* CompiledType;
 extern PyTypeObject* FunctionType;
 extern PyTypeObject* IteratorType;
 extern PyTypeObject* HashCObjType;

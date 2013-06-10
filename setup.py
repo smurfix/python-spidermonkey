@@ -98,33 +98,24 @@ def platform_config():
     sysname = os.uname()[0]
     machine = os.uname()[-1]
 
-    # If we're linking against a system library it should give
-    # us all the information we need.
-    if USE_SYSTEM_LIB:
-        return js_config()
-    
     # Build our configuration
     config = {
-        "extra_compile_args": [
-            "-DPOSIX_SOURCE",
-            "-D_BSD_SOURCE",
-            "-Wno-strict-prototypes" # Disable copius JS warnings
-        ],
-        "include_dirs": [
-            "spidermonkey/%s-%s" % (sysname, machine)
-        ],
+        "extra_compile_args": [],
+        "include_dirs": [],
         "library_dirs": [],
         "libraries": [],
         "extra_link_args": []
     }
 
-    if USE_PREBUILT:
-        config["include_dirs"] += [os.path.join(PREBUILT_PATH, "include")]
-        config["library_dirs"] += [os.path.join(PREBUILT_PATH, "lib")]
-        config["libraries"] += ["js_static", "stdc++"]
-    else:
-        config["include_dirs"] += ["spidermonkey/libjs"]
-
+    # If we're linking against a system library it should give
+    # us all the information we need.
+    if USE_SYSTEM_LIB:
+        if DEBUG:
+            config['extra_compile_args'] = ['-g', '-DDEBUG']
+            return js_config(config=config)
+        else:
+            return js_config()
+    
     # Debug builds are useful for finding errors in
     # the request counting semantics for Spidermonkey
     if DEBUG:
@@ -133,6 +124,23 @@ def platform_config():
             "-DDEBUG",
             "-DJS_PARANOID_REQUEST"
         ])
+
+    config["extra_compile_args"] = [
+            "-DPOSIX_SOURCE",
+            "-D_BSD_SOURCE",
+            "-Wno-strict-prototypes" # Disable copius JS warnings
+        ]
+
+    config["include_dirs"] = [
+            "spidermonkey/%s-%s" % (sysname, machine)
+            ]
+
+    if USE_PREBUILT:
+        config["include_dirs"] += [os.path.join(PREBUILT_PATH, "include")]
+        config["library_dirs"] += [os.path.join(PREBUILT_PATH, "lib")]
+        config["libraries"] += ["js_static", "stdc++"]
+    else:
+        config["include_dirs"] += ["spidermonkey/libjs"]
 
     if sysname in ["Linux", "FreeBSD"]:
         config["extra_compile_args"].extend([
