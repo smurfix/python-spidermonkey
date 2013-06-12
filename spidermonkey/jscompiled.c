@@ -112,11 +112,17 @@ static PyObject* Compiled_execute(Compiled* self, PyObject *args, PyObject* kwar
 
     if (!JS_ExecuteScript(jcx, exctx->root, self->cblob, &rval))
     {
-        PyErr_SetString(PyExc_AttributeError, "Failed to execute Javascript item.");
+        if(!PyErr_Occurred())
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Script execution failed and no exception was set");
+        }
         goto done;
     }
 
-    ret = js2py(self->cx, rval);
+    if (!PyErr_Occurred()) {
+	ret = js2py(exctx, rval);
+	JS_MaybeGC(exctx->cx);
+    }
 
 done:
     Py_XDECREF(exctx);
