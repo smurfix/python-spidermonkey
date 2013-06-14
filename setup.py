@@ -29,8 +29,8 @@ import os
 import subprocess as sp
 import sys
 from distutils.dist import Distribution
-import ez_setup
-ez_setup.use_setuptools()
+#import ez_setup
+#ez_setup.use_setuptools()
 from setuptools import setup, Extension
 
 PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug")
@@ -191,7 +191,7 @@ setup(
     ],
     
     setup_requires = [
-        'setuptools>=0.6c8',
+        'setuptools>=7.2',
         'nose>=0.10.0',
     ],
 
