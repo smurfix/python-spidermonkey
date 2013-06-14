@@ -469,16 +469,18 @@ Context_init(Context* self, PyObject* args, PyObject* kwargs)
 void
 Context_dealloc(Context* self)
 {
-    if(self->cx != NULL)
+    if (self->cx != NULL)
     {
         JS_DestroyContext(self->cx);
     }
 
-    Py_XDECREF(self->objects);
-    Py_XDECREF(self->weakglobal);
-    Py_XDECREF(self->strongglobal);
-    Py_XDECREF(self->access);
-    Py_XDECREF(self->classes);
+
+    Py_CLEAR(self->err_reporter);
+    Py_CLEAR(self->objects);
+    Py_CLEAR(self->weakglobal);
+    Py_CLEAR(self->strongglobal);
+    Py_CLEAR(self->access);
+    Py_CLEAR(self->classes);
 
     Py_XDECREF(self->rt);
 }
@@ -673,6 +675,27 @@ success:
 }
 
 PyObject*
+Context_set_error_reporter(Context* self, PyObject* errfunc)
+{
+    if (errfunc == NULL || errfunc == Py_None) {
+	Py_CLEAR(self->err_reporter);
+	Py_RETURN_NONE;
+    }
+
+    if (!PyCallable_Check(errfunc)) {
+	PyErr_SetString(PyExc_TypeError, "Error reporter must be a callable object.");
+	return NULL;
+    }
+
+    Py_CLEAR(self->err_reporter);
+
+    Py_INCREF(errfunc);
+    self->err_reporter = errfunc;
+
+    Py_RETURN_NONE;
+}
+
+PyObject*
 Context_compile(Context* self, PyObject* args, PyObject* kwargs)
 {
     PyObject* obj = NULL;
@@ -809,6 +832,12 @@ static PyMethodDef Context_methods[] = {
         (PyCFunction)Context_compile,
         METH_VARARGS | METH_KEYWORDS,
         "Compile JavaScript source code."
+    },
+    {
+        "set_error_reporter",
+        (PyCFunction)Context_set_error_reporter,
+        METH_O,
+        "Specify a callable error reporter."
     },
     {
         "gc",

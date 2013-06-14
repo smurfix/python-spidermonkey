@@ -165,7 +165,7 @@ Distribution.global_options.append(("prebuilt-library", None,
 
 setup(
     name = "python-spidermonkey",
-    version = "0.0.9",
+    version = "0.1.01",
     license = "MIT",
     author = "Paul J. Davis",
     author_email = "paul.joseph.davis@gmail.com",

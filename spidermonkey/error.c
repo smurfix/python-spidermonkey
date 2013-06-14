@@ -10,6 +10,73 @@
 #include "frameobject.h" // Python
 #include "traceback.h" // Python
 
+static int
+add_to_dict(PyDictObject* dict, const char *key, PyObject *newval)
+{
+    int ret = 0;
+
+    if (newval != NULL) {
+	ret = !PyDict_SetItemString((PyObject*)dict, key, newval);
+	Py_XDECREF(newval);	/* passed in object was addrefed (created from scratch) */
+    }
+
+    return ret;
+}
+
+static void
+user_error_reporter_wrapper(JSContext *jscx, const char *message, JSErrorReport *report)
+{
+    PyDictObject* infodict = NULL;
+    PyObject* tpl = NULL;
+    PyObject* tmp = NULL;
+    Context* pycx;
+
+    //if (report->flags & JSREPORT_EXCEPTION)
+    //	return;			/* these are best handled by JS */
+
+    pycx = (Context*) JS_GetContextPrivate(jscx);
+
+    if (pycx == NULL || pycx->err_reporter == NULL)
+	return;			/* not much we can do */
+
+    infodict = (PyDictObject*) PyDict_New();
+    if (infodict == NULL)
+	return;
+
+    if (!add_to_dict(infodict, "flags", PyInt_FromLong(report->flags)) ||
+	!add_to_dict(infodict, "errorNumber", PyInt_FromLong(report->errorNumber)) ||
+	!add_to_dict(infodict, "lineno", PyInt_FromLong(report->lineno)))
+	goto error;
+
+    if (message != NULL && !add_to_dict(infodict, "message", PyString_FromString(message)))
+	goto error;
+
+    if (report->filename != NULL)
+	if (!add_to_dict(infodict, "filename", PyString_FromString(report->filename)))
+	    goto error;
+
+    if (report->linebuf != NULL) {
+	if (!add_to_dict(infodict, "linebuf", PyString_FromString(report->linebuf)))
+	    goto error;
+	if (report->tokenptr != NULL &&
+	    !add_to_dict(infodict, "tokenpos", PyLong_FromLong(report->tokenptr - report->linebuf)))
+	    goto error;
+    }
+
+    /* Now call the error reporting function */
+
+    tpl = Py_BuildValue("(O)", infodict);
+    if (tpl != NULL) {
+	tmp = PyObject_Call(pycx->err_reporter, tpl, NULL);
+	if (tmp != NULL)
+	    Py_XDECREF(tmp);
+    }
+
+ error:
+    Py_XDECREF(infodict);
+    Py_XDECREF(tpl);
+}
+
 void
 add_frame(const char* srcfile, const char* funcname, int linenum)
 {
@@ -79,7 +146,15 @@ report_error_cb(JSContext* cx, const char* message, JSErrorReport* report)
      * are raised, even if they're caught and the Mozilla docs say you can
      * ignore it.
      */
-    /* TODO What should we do about warnings? A callback somehow? */
+
+    /* If there is a user callback, execute it first */
+
+    user_error_reporter_wrapper(cx, message, report);
+
+    /* Continue and include anything else except WARNINGS as a standard Python
+     * exception.
+     */
+
     if (report->flags & JSREPORT_WARNING)
         return;
 
@@ -92,6 +167,7 @@ report_error_cb(JSContext* cx, const char* message, JSErrorReport* report)
     if(!PyErr_Occurred())
     {
         PyErr_SetString(JSError, message);
+	PyErr_SyntaxLocation(srcfile, report->lineno);
     }
 
     add_frame(srcfile, "JavaScript code", report->lineno);

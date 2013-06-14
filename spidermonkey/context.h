@@ -28,6 +28,7 @@ typedef struct {
     PyObject* strongglobal;
 
     PyObject* access;
+    PyObject* err_reporter;
     JSContext* cx;
     JSObject* root;
     PyDictObject* classes;
