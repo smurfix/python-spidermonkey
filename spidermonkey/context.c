@@ -625,7 +625,7 @@ Context_execute(Context* self, PyObject* args, PyObject* kwargs)
 
     if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", keywords,
                                     &obj, &fname, &lineno))
-        goto error;
+	return NULL;
 
     JS_BeginRequest(self->cx);
     
@@ -713,7 +713,7 @@ Context_compile(Context* self, PyObject* args, PyObject* kwargs)
 
     if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", keywords,
                                     &obj, &fname, &lineno))
-        goto error;
+	return NULL;
 
     JS_BeginRequest(self->cx);
     
