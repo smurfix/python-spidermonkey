@@ -13,6 +13,13 @@ scripts and functions respectively.  Borrows heavily from Claes Jacobssen's
 Javascript Perl module, in turn based on Mozilla's 'PerlConnect' Perl binding.
 """,
 
+# This is a workaround for a Python bug aggravated by nose
+# Issue report: http://bugs.python.org/issue15881
+try:
+    import multiprocessing
+except ImportError:
+    pass
+
 # I haven't the sligthest, but this appears to fix
 # all those EINTR errors. Pulled and adapted for OS X
 # from twisted bug #733

@@ -920,8 +920,16 @@ Context_has_access(Context* pycx, JSContext* jscx, PyObject* obj, PyObject* key)
 
     tmp = PyObject_Call(pycx->access, tpl, NULL);
 
-    if (tmp != NULL)
-	res = PyObject_IsTrue(tmp);
+    // Any exception raised is interpreted as an access check failure.  This allows
+    // more information to be passed from the access check routine, or traps
+    // unexpected conditions.
+
+    if (tmp == NULL) {
+	Py_XDECREF(tpl);
+	return NULL;
+    }
+
+    res = PyObject_IsTrue(tmp);
 
 done:
     Py_XDECREF(tpl);
