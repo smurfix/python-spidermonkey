@@ -164,11 +164,14 @@ report_error_cb(JSContext* cx, const char* message, JSErrorReport* report)
     if(srcfile == NULL) srcfile = "<JavaScript>";
     if(mesg == NULL) mesg = "Unknown JavaScript execution error";
 
-    if(!PyErr_Occurred())
-    {
+    if(!PyErr_Occurred()) {
         PyErr_SetString(JSError, message);
-	PyErr_SyntaxLocation(srcfile, report->lineno);
     }
+   
+    // Set the location regardless of where the error origininated.  This may hide a deeper python file location, but
+    // provides a clearer indication of the Javascript location which triggered it.
+
+    PyErr_SyntaxLocation(srcfile, report->lineno);
 
     add_frame(srcfile, "JavaScript code", report->lineno);
 }

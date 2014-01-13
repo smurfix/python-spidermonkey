@@ -104,6 +104,9 @@ static PyObject* Compiled_execute(Compiled* self, PyObject *args, PyObject* kwar
     if (exctx == NULL)
 	exctx = self->cx;
 
+    if (!Context_thread_OK(exctx))
+	return NULL;
+
     Py_INCREF(exctx);
 
     jcx = exctx->cx;

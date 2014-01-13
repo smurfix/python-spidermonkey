@@ -38,14 +38,14 @@ typedef struct {
     long max_heap;
     time_t max_time;
     time_t start_time;
+    char thread_active;
 } Context;
 
 PyObject* Context_get_class(Context* cx, const char* key);
 int Context_add_class(Context* cx, const char* key, PyObject* val);
-
 int Context_has_access(Context*, JSContext*, PyObject*, PyObject*);
-
 int Context_add_object(Context* cx, PyObject* val);
+char Context_thread_OK(Context* cs);
 
 extern PyTypeObject _ContextType;
 

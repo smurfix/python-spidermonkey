@@ -16,6 +16,16 @@
 // Forward decl for add_prop
 JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval);
 
+char Context_thread_OK(Context* self)
+{
+    if (self->thread_active)
+	return 1;
+
+    PyErr_SetString(JSError, "Context not associated with thread.  Operation illegal.");
+
+    return 0;
+}
+
 PyObject* get_cxglobal(Context* self)
 {
     PyObject* ret = self->strongglobal;
@@ -431,6 +441,9 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     self->start_time = 0;
     self->max_heap = 0;
 
+    // initial we are on the thread we are currently using
+    self->thread_active = 1;
+
     JS_SetOperationCallback(self->cx, branch_cb);
     JS_SetErrorReporter(self->cx, report_error_cb);
 
@@ -494,6 +507,9 @@ Context_add_global(Context* self, PyObject* args, PyObject* kwargs)
     jsid kid;
     jsval jsv;
 
+    if (!Context_thread_OK(self))
+	return NULL;
+
     JS_BeginRequest(self->cx);
 
     if(!PyArg_ParseTuple(args, "OO", &pykey, &pyval)) goto error;
@@ -532,6 +548,9 @@ Context_rem_global(Context* self, PyObject* args, PyObject* kwargs)
     jsval jsk;
     jsid kid;
     jsval jsv;
+
+    if (!Context_thread_OK(self))
+	return NULL;
 
     JS_BeginRequest(self->cx);
 
@@ -627,6 +646,9 @@ Context_execute(Context* self, PyObject* args, PyObject* kwargs)
                                     &obj, &fname, &lineno))
 	return NULL;
 
+    if (!Context_thread_OK(self))
+	return NULL;
+
     JS_BeginRequest(self->cx);
     
     script = py2js_string_obj(self, obj);
@@ -715,6 +737,9 @@ Context_compile(Context* self, PyObject* args, PyObject* kwargs)
                                     &obj, &fname, &lineno))
 	return NULL;
 
+    if (!Context_thread_OK(self))
+	return NULL;
+
     JS_BeginRequest(self->cx);
     
     script = py2js_string_obj(self, obj);
@@ -751,8 +776,39 @@ success:
 }
 
 PyObject*
+Context_set_context_thread(Context* self, PyObject* args, PyObject* kwargs)
+{
+    if (self->thread_active) {
+	PyErr_SetString(JSError, "Cannot activate context in another thread.  Still active elsewhere.");
+	return NULL;
+    }
+
+    JS_SetContextThread(self->cx);
+    self->thread_active = 1;
+
+    Py_RETURN_NONE;
+}
+
+PyObject*
+Context_clear_context_thread(Context* self, PyObject* args, PyObject* kwargs)
+{
+    if (!self->thread_active) {
+	PyErr_SetString(JSError, "Cannot detach from thread.  Already detached.");
+	return NULL;
+    }
+
+    JS_ClearContextThread(self->cx);
+    self->thread_active = 0;
+
+    Py_RETURN_NONE;
+}
+
+PyObject*
 Context_gc(Context* self, PyObject* args, PyObject* kwargs)
 {
+    if (!Context_thread_OK(self))
+	return NULL;
+
     Py_DECREF(self->objects);
     self->objects = (PySetObject*) PySet_New(NULL);
 
@@ -838,6 +894,18 @@ static PyMethodDef Context_methods[] = {
         (PyCFunction)Context_set_error_reporter,
         METH_O,
         "Specify a callable error reporter."
+    },
+    {
+	"detach_from_thread",
+	(PyCFunction)Context_clear_context_thread,
+	METH_NOARGS,
+	"Disconnect from current thread (must not perform any operations until reconnect)"
+    },
+    {
+	"attach_to_thread",
+	(PyCFunction)Context_set_context_thread,
+	METH_NOARGS,
+	"Connect to current thread (must be called before any ops on new thread)"
     },
     {
         "gc",
@@ -926,7 +994,7 @@ Context_has_access(Context* pycx, JSContext* jscx, PyObject* obj, PyObject* key)
 
     if (tmp == NULL) {
 	Py_XDECREF(tpl);
-	return NULL;
+	return 0;
     }
 
     res = PyObject_IsTrue(tmp);
