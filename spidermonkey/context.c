@@ -30,9 +30,20 @@ PyObject* get_cxglobal(Context* self)
 {
     PyObject* ret = self->strongglobal;
 
-    if (ret == NULL && (self->weakglobal == NULL || (ret = PyWeakref_GetObject(self->weakglobal)) == Py_None))
-	return NULL;
+    if (ret == NULL) {
+	if (self->weakglobal == NULL)
+	    return NULL;
 
+	// No point in keeping a weak global around once we discover its target is gone.
+
+	ret = PyWeakref_GetObject(self->weakglobal);
+
+	if (ret == Py_None) {
+	    Py_CLEAR(self->weakglobal);
+	    return NULL;
+	}
+    }
+     
     // Must be certain to decref the global, since anything may cause it to disappear.
     Py_INCREF(ret);
     return ret;
