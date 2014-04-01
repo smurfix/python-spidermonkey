@@ -87,7 +87,7 @@ initspidermonkey(void)
     Py_INCREF(HashCObjType);
     // Don't add access from the module on purpose.
 
-    JSError = PyErr_NewException("spidermonkey.JSError", NULL, NULL);
+    JSError = PyErr_NewException((char*)"spidermonkey.JSError", NULL, NULL);
     PyModule_AddObject(m, "JSError", JSError);
     
     SpidermonkeyModule = m;

@@ -13,7 +13,7 @@ js2py_function(Context* cx, jsval val, jsval parent)
 {
     Function* ret = NULL;
 
-    if(JSVAL_IS_VOID(parent) || !JSVAL_IS_OBJECT(parent))
+    if(JSVAL_IS_VOID(parent) || !parent.isObject())
     {
         PyErr_BadInternalCall();
         goto error;
@@ -70,7 +70,7 @@ Function_call(Function* self, PyObject* args, PyObject* kwargs)
     argc = PySequence_Length(args);
     if(argc < 0) goto error;
     
-    argv = calloc(argc, sizeof(jsval));
+    argv = (jsval*) calloc(argc, sizeof(jsval));
     if(argv == NULL)
     {
         PyErr_NoMemory();

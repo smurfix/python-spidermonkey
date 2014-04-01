@@ -9,7 +9,7 @@
 #include "spidermonkey.h"
 
 PyObject* 
-Compiled_Wrap(Context* cx, JSObject* obj)
+Compiled_Wrap(Context* cx, JSScript* sobj)
 {
     Compiled* self = NULL;
     PyObject* tpl = NULL;
@@ -25,10 +25,9 @@ Compiled_Wrap(Context* cx, JSObject* obj)
     if(self == NULL) goto error;
     
     // Attach the compiled blob
-    self->cblob = obj;
-    self->cbval = OBJECT_TO_JSVAL(obj);
+    self->sobj = sobj;
 
-    if(!JS_AddNamedValueRoot(cx->cx, &(self->cbval), "Compiled_Wrap"))
+    if(!JS_AddNamedScriptRoot(cx->cx, &(self->sobj), "Compiled_Wrap"))
     {
         PyErr_SetString(PyExc_RuntimeError, "Failed to set GC root.");
         goto error;
@@ -59,8 +58,7 @@ Compiled_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     
     Py_INCREF(cx);
     self->cx = cx;
-    self->cblob = NULL;
-    self->cbval = JSVAL_VOID;
+    self->sobj = NULL;
 
     goto success;
 
@@ -77,10 +75,10 @@ int Compiled_init(Compiled* self, PyObject* args, PyObject* kwargs)
 
 void Compiled_dealloc(Compiled* self)
 {
-    if(self->cblob != NULL)
+    if(self->sobj != NULL)
     {
         JS_BeginRequest(self->cx->cx);
-        JS_RemoveValueRoot(self->cx->cx, &(self->cbval));
+        JS_RemoveScriptRoot(self->cx->cx, &(self->sobj));
         JS_EndRequest(self->cx->cx);
     }
    
@@ -113,7 +111,7 @@ static PyObject* Compiled_execute(Compiled* self, PyObject *args, PyObject* kwar
 
     JS_BeginRequest(jcx);
 
-    if (!JS_ExecuteScript(jcx, exctx->root, self->cblob, &rval))
+    if (!JS_ExecuteScript(jcx, exctx->root, self->sobj, &rval))
     {
         if(!PyErr_Occurred())
         {

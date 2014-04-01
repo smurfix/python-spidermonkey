@@ -8,61 +8,42 @@
 
 #include "spidermonkey.h"
 
+#define SLOT_PYOBJ    0
+#define SLOT_ITER     1
+#define SLOT_ITERFLAG 2
+
+#define SLOT_COUNT    (SLOT_ITERFLAG+1)
+
 PyObject*
-get_js_slot(JSContext* cx, JSObject* obj, int slot)
+get_js_slot(JSObject* obj, int slot)
 {
-    jsval priv;
-
-    if(!JS_GetReservedSlot(cx, obj, slot, &priv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get slot data.");
-        return NULL;
-    }
-
+    jsval priv = JS_GetReservedSlot(obj, slot);
     return (PyObject*) JSVAL_TO_PRIVATE(priv);
 }
 
 void
-finalize(JSContext* jscx, JSObject* jsobj)
+finalize(JSFreeOp* jsfop, JSObject* jsobj)
 {
-    Context* pycx = (Context*) JS_GetContextPrivate(jscx);
-    PyObject* pyobj = NULL;
-    PyObject* pyiter = NULL;
+    PyObject* pyobj;
+    PyObject* pyiter;
 
-    JS_BeginRequest(jscx);
+    pyobj = get_js_slot(jsobj, SLOT_PYOBJ);
+    Py_XDECREF(pyobj);
 
-    if(pycx == NULL)
-    {
-        fprintf(stderr, "*** NO PYTHON CONTEXT ***\n");
-        JS_EndRequest(jscx);
-        return;
-    }
-
-    pyobj = get_js_slot(jscx, jsobj, 0);
-    Py_DECREF(pyobj);
-
-    pyiter = get_js_slot(jscx, jsobj, 1);
-    Py_DECREF(pyiter);
-
-    JS_EndRequest(jscx);
+    pyiter = get_js_slot(jsobj, SLOT_ITER);
+    Py_XDECREF(pyiter);
 }
 
 JSBool
-call(JSContext* jscx, uintN argc, jsval* vp)
+call(JSContext* jscx, unsigned argc, jsval* vp)
 {
     jsval *argv = JS_ARGV(jscx, vp);
     jsval objval = JS_CALLEE(jscx, vp);
 
     JSObject* obj = JSVAL_TO_OBJECT(objval);
 
-    if(argc >= 1 && JSVAL_IS_BOOLEAN(argv[0]) && !JSVAL_TO_BOOLEAN(argv[0]))
-    {
-        if(!JS_SetReservedSlot(jscx, obj, 2, JSVAL_TRUE))
-        {
-            JS_ReportError(jscx, "Failed to reset iterator flag.");
-            return JS_FALSE;
-        }
-    }
+    if (argc >= 1 && JSVAL_IS_BOOLEAN(argv[0]) && !JSVAL_TO_BOOLEAN(argv[0]))
+	JS_SetReservedSlot(obj, SLOT_ITERFLAG, JSVAL_TRUE);
 
     JS_SET_RVAL(jscx, vp, objval);
 
@@ -72,19 +53,15 @@ call(JSContext* jscx, uintN argc, jsval* vp)
 JSBool
 is_for_each(JSContext* cx, JSObject* obj, JSBool* rval)
 {
-    jsval slot;
-    if(!JS_GetReservedSlot(cx, obj, 2, &slot))
-    {
-        return JS_FALSE;
-    }
+    jsval slot = JS_GetReservedSlot(obj, SLOT_ITERFLAG);
 
-    if(!JSVAL_IS_BOOLEAN(slot)) return JS_FALSE;
+    if (!JSVAL_IS_BOOLEAN(slot)) return JS_FALSE;
     *rval = JSVAL_TO_BOOLEAN(slot);
     return JS_TRUE;
 }
 
 JSBool
-def_next(JSContext* jscx, uintN argc, jsval* vp)
+def_next(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -103,14 +80,14 @@ def_next(JSContext* jscx, uintN argc, jsval* vp)
         goto done;
     }
 
-    iter = get_js_slot(jscx, jsthis, 1);
+    iter = get_js_slot(jsthis, SLOT_ITER);
     if(!PyIter_Check(iter))
     {
         JS_ReportError(jscx, "Object is not an iterator.");
         goto done;
     }
 
-    pyobj = get_js_slot(jscx, jsthis, 0);
+    pyobj = get_js_slot(jsthis, SLOT_PYOBJ);
     if(pyobj == NULL)
     {
         JS_ReportError(jscx, "Failed to find iterated object.");
@@ -160,7 +137,7 @@ done:
 }
 
 JSBool
-seq_next(JSContext* jscx, uintN argc, jsval* vp)
+seq_next(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -182,7 +159,7 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
         goto done;
     }
 
-    pyobj = get_js_slot(jscx, jsthis, 0);
+    pyobj = get_js_slot(jsthis, SLOT_PYOBJ);
     if(!PySequence_Check(pyobj))
     {
         JS_ReportError(jscx, "Object is not a sequence.");
@@ -192,7 +169,7 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     maxval = PyObject_Length(pyobj);
     if(maxval < 0) goto done;
 
-    iter = get_js_slot(jscx, jsthis, 1);
+    iter = get_js_slot(jsthis, SLOT_ITER);
     if(!PyInt_Check(iter))
     {
         JS_ReportError(jscx, "Object is not an integer.");
@@ -214,11 +191,7 @@ seq_next(JSContext* jscx, uintN argc, jsval* vp)
     next = PyInt_FromLong(currval + 1);
     if(next == NULL) goto done;
 
-    if(!JS_SetReservedSlot(jscx, jsthis, 1, PRIVATE_TO_JSVAL(next)))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store base object.");
-        goto done;
-    }
+    JS_SetReservedSlot(jsthis, SLOT_ITER, PRIVATE_TO_JSVAL(next));
 
     if(!is_for_each(jscx, jsthis, &foreach))
     {
@@ -255,37 +228,31 @@ done:
 static JSClass
 js_iter_class = {
     "PyJSIteratorClass",
-    JSCLASS_HAS_RESERVED_SLOTS(3),
+    JSCLASS_HAS_RESERVED_SLOTS(SLOT_COUNT),
     JS_PropertyStub,
-    JS_PropertyStub,
+    JS_DeletePropertyStub,
     JS_PropertyStub,
     JS_StrictPropertyStub,
     JS_EnumerateStub,
     JS_ResolveStub,
     JS_ConvertStub,
     finalize,
-    NULL, // get object ops
     NULL, // check access
-    call,
-    NULL, // constructor
-    NULL, // xdr object
-    NULL, // has instance
-    NULL, // mark
-    NULL  // reserved slots
+    call
 };
 
 static JSFunctionSpec js_def_iter_functions[] = {
-    {"next", def_next, 0, 0},
-    {0, 0, 0, 0}
+    {"next", JSOP_WRAPPER(def_next), 0, 0},
+    {0, JSOP_WRAPPER(NULL), 0, 0}
 };
 
 static JSFunctionSpec js_seq_iter_functions[] = {
-    {"next", seq_next, 0, 0},
-    {0, 0, 0, 0}
+    {"next", JSOP_WRAPPER(seq_next), 0, 0},
+    {0, JSOP_WRAPPER(NULL), 0, 0}
 };
 
 JSBool
-new_py_def_iter(Context* cx, PyObject* obj, jsval* rval)
+new_py_def_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
 {
     PyObject* pyiter = NULL;
     PyObject* attached = NULL;
@@ -294,7 +261,7 @@ new_py_def_iter(Context* cx, PyObject* obj, jsval* rval)
     JSBool ret = JS_FALSE;
 
     // Initialize the return value
-    *rval = JSVAL_VOID;
+    rval.setUndefined();
 
     pyiter = PyObject_GetIter(obj);
     if(pyiter == NULL)
@@ -323,27 +290,15 @@ new_py_def_iter(Context* cx, PyObject* obj, jsval* rval)
     attached = obj;
     Py_INCREF(attached);
     jsv = PRIVATE_TO_JSVAL(attached);
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 0, jsv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store base object.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_PYOBJ, jsv);
 
     jsv = PRIVATE_TO_JSVAL(pyiter);
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 1, jsv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store iter object.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_ITER, jsv);
 
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 2, JSVAL_FALSE))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store iterator flag.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, JSVAL_FALSE);
 
     //Py_INCREF(cx); 
-    *rval = OBJECT_TO_JSVAL(jsiter);
+    rval.setObject(*jsiter);
     ret = JS_TRUE;
     goto success;
 
@@ -355,7 +310,7 @@ success:
 }
 
 JSBool
-new_py_seq_iter(Context* cx, PyObject* obj, jsval* rval)
+new_py_seq_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
 {
     PyObject* pyiter = NULL;
     PyObject* attached = NULL;
@@ -364,7 +319,7 @@ new_py_seq_iter(Context* cx, PyObject* obj, jsval* rval)
     JSBool ret = JS_FALSE;
 
     // Initialize the return value
-    *rval = JSVAL_VOID;
+    rval.setUndefined();
 
     // Our counting state
     pyiter = PyInt_FromLong(0);
@@ -382,27 +337,15 @@ new_py_seq_iter(Context* cx, PyObject* obj, jsval* rval)
     attached = obj;
     Py_INCREF(attached);
     jsv = PRIVATE_TO_JSVAL(attached);
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 0, jsv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store base object.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_PYOBJ, jsv);
 
     jsv = PRIVATE_TO_JSVAL(pyiter);
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 1, jsv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store iter object.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_ITER, jsv);
 
-    if(!JS_SetReservedSlot(cx->cx, jsiter, 2, JSVAL_FALSE))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store iterator flag.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, JSVAL_FALSE);
 
     //Py_INCREF(cx);
-    *rval = OBJECT_TO_JSVAL(jsiter);
+    rval.setObject(*jsiter);
     ret = JS_TRUE;
     goto success;
 
@@ -414,7 +357,7 @@ success:
 }
 
 JSBool
-new_py_iter(Context* cx, PyObject* obj, jsval* rval)
+new_py_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
 {
     if(PySequence_Check(obj))
     {

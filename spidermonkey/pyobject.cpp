@@ -17,21 +17,14 @@
     object.
 */
 PyObject*
-get_py_obj(JSContext* cx, JSObject* obj)
+get_py_obj(JSObject* obj)
 {
-    jsval priv;
-
-    if(!JS_GetReservedSlot(cx, obj, 0, &priv))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get slot data.");
-        return NULL;
-    }
-
+    jsval priv = JS_GetReservedSlot(obj, 0);
     return (PyObject*) JSVAL_TO_PRIVATE(priv);
 }
 
 JSBool
-js_del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
+js_del_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool *succeeded)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -48,7 +41,7 @@ js_del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, jsobj);
+    pyobj = get_py_obj(jsobj);
     if(pyobj == NULL) goto error;
     
     pykey = js2py(pycx, key);
@@ -62,7 +55,7 @@ js_del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
         if(PyObject_DelAttr(pyobj, pykey) < 0)
         {
             PyErr_Clear();
-            *val = JSVAL_FALSE;
+            *succeeded = FALSE;
         }
     }
    
@@ -75,8 +68,7 @@ success:
     return ret;
 }
 
-JSBool
-js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
+JSBool js_get_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -96,7 +88,7 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
         goto done;
     }
     
-    pyobj = get_py_obj(jscx, jsobj);
+    pyobj = get_py_obj(jsobj);
     if(pyobj == NULL) goto done;
     
     pykey = js2py(pycx, key);
@@ -115,8 +107,8 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
 
         if(strcmp("__iterator__", data) == 0)
         {
-            if(!new_py_iter(pycx, pyobj, val)) goto done;
-            if(!JSVAL_IS_VOID(*val))
+            if(!new_py_iter(pycx, pyobj, rval)) goto done;
+            if (!rval.isUndefined())
             {
                 ret = JS_TRUE;
                 goto done;
@@ -133,13 +125,13 @@ js_get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* val)
         {
             PyErr_Clear();
             ret = JS_TRUE;
-            *val = JSVAL_VOID;
+            rval.setUndefined();
             goto done;
         }
     }
 
-    *val = py2js(pycx, pyval);
-    if(JSVAL_IS_VOID(*val)) goto done;
+    rval.set(py2js(pycx, pyval));
+    if(rval.isUndefined()) goto done;
     ret = JS_TRUE;
 
 done:
@@ -151,7 +143,7 @@ done:
 }
 
 JSBool
-js_set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* val)
+js_set_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool strict, JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -169,7 +161,7 @@ js_set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* 
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, jsobj);
+    pyobj = get_py_obj(jsobj);
     if(pyobj == NULL)
     {
         JS_ReportError(jscx, "Failed to find a Python object.");
@@ -185,7 +177,7 @@ js_set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* 
 
     if(Context_has_access(pycx, jscx, pyobj, pykey) <= 0) goto error;
 
-    pyval = js2py(pycx, *val);
+    pyval = js2py(pycx, rval);
     if(pyval == NULL)
     {
         JS_ReportError(jscx, "Failed to convert value to Python.");
@@ -208,32 +200,20 @@ success:
     return ret;
 }
 
-void
-js_finalize(JSContext* jscx, JSObject* jsobj)
+void js_finalize(JSFreeOp*, JSObject* jsobj)
 {
-    Context* pycx = (Context*) JS_GetContextPrivate(jscx);
     PyObject* pyobj = NULL;
-  
-    if(pycx == NULL)
-    {
-        // Not much else we can do but yell.
-        fprintf(stderr, "*** NO PYTHON CONTEXT ***\n");
-        return;
-    }
 
-    JS_BeginRequest(jscx);
-    pyobj = get_py_obj(jscx, jsobj);
-    JS_EndRequest(jscx);
-
+    pyobj = get_py_obj(jsobj);
     Py_DECREF(pyobj);
 }
 
 PyObject*
-mk_args_tuple(Context* pycx, JSContext* jscx, uintN argc, jsval* argv)
+mk_args_tuple(Context* pycx, JSContext* jscx, unsigned argc, jsval* argv)
 {
     PyObject* tpl = NULL;
     PyObject* tmp = NULL;
-    int idx;
+    unsigned idx;
     
     tpl = PyTuple_New(argc);
     if(tpl == NULL)
@@ -258,7 +238,7 @@ success:
 }
 
 JSBool
-js_call(JSContext* jscx, uintN argc, jsval* vp)
+js_call(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -277,7 +257,7 @@ js_call(JSContext* jscx, uintN argc, jsval* vp)
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(funcobj));
+    pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
     
     if(!PyCallable_Check(pyobj))
     {
@@ -326,7 +306,7 @@ success:
 }
 
 JSBool
-js_ctor(JSContext* jscx, uintN argc, jsval* vp)
+js_ctor(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
@@ -345,7 +325,7 @@ js_ctor(JSContext* jscx, uintN argc, jsval* vp)
         goto error;
     }
     
-    pyobj = get_py_obj(jscx, JSVAL_TO_OBJECT(funcobj));
+    pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
     
     if(!PyCallable_Check(pyobj))
     {
@@ -459,19 +439,18 @@ success:
     return ret;
 }
 
-PyObject*
-unwrap_pyobject(Context* cx, jsval val)
+PyObject* unwrap_pyobject(jsval val)
 {
     PyObject* ret = NULL;
     JSClass* klass = NULL;
     JSObject* obj = NULL;
 
     obj = JSVAL_TO_OBJECT(val);
-    klass = JS_GET_CLASS(cx->cx, obj);
+    klass = JS_GetClass(obj);
 
     if (klass->finalize == js_finalize)
     {
-	ret = get_py_obj(cx->cx, obj);
+	ret = get_py_obj(obj);
 	Py_INCREF(ret);
     }
     return ret;
@@ -498,11 +477,7 @@ py2js_object(Context* cx, PyObject* pyobj)
     }
 
     pyval = PRIVATE_TO_JSVAL(pyobj);
-    if(!JS_SetReservedSlot(cx->cx, jsobj, 0, pyval))
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store ref'ed object.");
-        goto error;
-    }
+    JS_SetReservedSlot(jsobj, 0, pyval);
 
     if(Context_add_object(cx, pyobj) < 0)
     {

@@ -40,7 +40,7 @@ long2js_integer(Context* cx, long pyval)
 PyObject*
 js2py_integer(Context* cx, jsval val)
 {
-    int32 rval;
+    int32_t rval;
 
     if(!JS_ValueToInt32(cx->cx, val, &rval))
     {

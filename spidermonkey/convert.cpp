@@ -91,7 +91,7 @@ js2py_with_parent(Context* cx, jsval val, jsval parent)
 
     /* Now try to unwrap any incoming object in so we don't rewrap our own objects being passed around. */
 
-    unwrapped = unwrap_pyobject(cx, val);
+    unwrapped = unwrap_pyobject(val);
 
     if (unwrapped != NULL)
 	return unwrapped;

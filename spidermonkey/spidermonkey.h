@@ -9,12 +9,16 @@
 #ifndef SPIDERMONKEY_H
 #define SPIDERMONKEY_H
 
+#include <js/RequiredDefines.h>
+
 #include <Python.h>
 #include "structmember.h"
 
-#pragma GCC diagnostic ignored "-Wstrict-prototypes"
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include <jsapi.h>
-#pragma GCC diagnostic warning "-Wstrict-prototypes"
+#pragma GCC diagnostic warning "-Winvalid-offsetof"
+#pragma GCC diagnostic warning "-Wunused-variable"
 
 #include "runtime.h"
 #include "context.h"
@@ -50,3 +54,6 @@ extern PyTypeObject* HashCObjType;
 extern PyObject* JSError;
 
 #endif
+
+#define TRUE (-1)
+#define FALSE (0)

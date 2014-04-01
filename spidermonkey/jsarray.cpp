@@ -18,7 +18,7 @@ Py_ssize_t
 Array_length(Object* self)
 {
     Py_ssize_t ret = -1;
-    jsuint length;
+    uint32_t length;
 
     JS_BeginRequest(self->cx->cx);
 
@@ -40,7 +40,7 @@ Array_get_item(Object* self, Py_ssize_t idx)
 {
     PyObject* ret = NULL;
     jsval rval;
-    jsint pos = (jsint) idx;
+    uint32_t pos = idx;
 
     JS_BeginRequest(self->cx->cx);
 
@@ -68,7 +68,7 @@ Array_set_item(Object* self, Py_ssize_t idx, PyObject* val)
 {
     int ret = -1;
     jsval pval;
-    jsint pos = (jsint) idx;
+    uint32_t pos = idx;
 
     JS_BeginRequest(self->cx->cx);
 

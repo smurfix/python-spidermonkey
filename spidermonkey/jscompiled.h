@@ -22,12 +22,11 @@
 typedef struct {
     PyObject_HEAD
     Context* cx;
-    JSObject* cblob;
-    jsval cbval;
+    JSScript* sobj;
 } Compiled;
 
 extern PyTypeObject _CompiledType;
 
-PyObject* Compiled_Wrap(Context* cx, JSObject* obj);
+PyObject* Compiled_Wrap(Context* cx, JSScript* obj);
 
 #endif

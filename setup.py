@@ -1,5 +1,6 @@
 #
 # Copyright 2009 Paul J. Davis <paul.joseph.davis@gmail.com>
+# Copyright 2014 Gary J. Wisniewski <garyw@blueseastech.com>
 #
 # This file is part of the python-spidermonkey package released
 # under the MIT license.
@@ -36,30 +37,26 @@ import os
 import subprocess as sp
 import sys
 from distutils.dist import Distribution
-#import ez_setup
-#ez_setup.use_setuptools()
+from distutils.sysconfig import get_config_vars
 from setuptools import setup, Extension
 
-PREBUILT_PATH = os.path.abspath("../js-1.8.5/js/src/build-debug")
+PREBUILT_PATH = os.path.abspath("../../src/mozjs-24.2.0/js/src/dist")
 
 DEBUG = "--debug" in sys.argv
-USE_LOCAL_LIB = "--local-library" in sys.argv
 USE_PREBUILT = "--prebuilt-library" in sys.argv
-USE_SYSTEM_LIB = not (USE_LOCAL_LIB or USE_PREBUILT)
+USE_SYSTEM_LIB = not (USE_PREBUILT)
+
+# Remove strict-prototypes from any options, this allows CPP files to be compiled using gcc.  This is really
+# a bug in distutils.
+# Code is from: http://stackoverflow.com/questions/8106258/cc1plus-warning-command-line-option-wstrict-prototypes-is-valid-for-ada-c-o/9740721#9740721
+(opt,) = get_config_vars('OPT')
+os.environ['OPT'] = " ".join(flag for flag in opt.split() if flag != '-Wstrict-prototypes')
 
 def find_sources(extensions=(".c", ".cpp")):
-    if USE_SYSTEM_LIB or USE_PREBUILT:
-        return [
-            fname
-            for ext in extensions
-            for fname in glob.glob("spidermonkey/*" + ext)
-        ]
-    else:
-        return [
-            os.path.join(dpath, fname)
-            for (dpath, dnames, fnames) in os.walk("./spidermonkey")
-            for fname in fnames
-            if fname.endswith(extensions)
+    return [
+        fname
+        for ext in extensions
+        for fname in glob.glob("spidermonkey/*" + ext)
         ]
 
 def pkg_config(pkg_name, config=None):
@@ -107,7 +104,9 @@ def platform_config():
 
     # Build our configuration
     config = {
-        "extra_compile_args": [],
+        # no-write-strings turns of coercion warnings about string literals.  THIS SHOULD BE REMOVED
+        # as soon as Python header files start using const correctly.
+        "extra_compile_args": ["-Wno-write-strings"],
         "include_dirs": [],
         "library_dirs": [],
         "libraries": [],
@@ -132,12 +131,6 @@ def platform_config():
             "-DJS_PARANOID_REQUEST"
         ])
 
-    config["extra_compile_args"] = [
-            "-DPOSIX_SOURCE",
-            "-D_BSD_SOURCE",
-            "-Wno-strict-prototypes" # Disable copius JS warnings
-        ]
-
     config["include_dirs"] = [
             "spidermonkey/%s-%s" % (sysname, machine)
             ]
@@ -145,7 +138,10 @@ def platform_config():
     if USE_PREBUILT:
         config["include_dirs"] += [os.path.join(PREBUILT_PATH, "include")]
         config["library_dirs"] += [os.path.join(PREBUILT_PATH, "lib")]
-        config["libraries"] += ["js_static", "stdc++"]
+        config["runtime_library_dirs"] = [os.path.join(PREBUILT_PATH, "lib")]
+        config["libraries"] += ['mozjs-24']
+        config["extra_compile_args"] += ["-Wl,-version-script,symverscript"]
+        #config["extra_compile_args"] += ["-include RequiredDefines.h"]
     else:
         config["include_dirs"] += ["spidermonkey/libjs"]
 
@@ -161,25 +157,24 @@ def platform_config():
     else:
         raise RuntimeError("Unknown system name: %s" % sysname)
 
+    print nspr_config(config=config)
     return nspr_config(config=config)
 
 Distribution.global_options.append(("debug", None,
                     "Build a DEBUG version of spidermonkey."))
-Distribution.global_options.append(("local-library", None,
-                    "Link against a local copy of the library (deprecated)."))
 Distribution.global_options.append(("prebuilt-library", None,
                     "Link against prebuilt library in %s." % PREBUILT_PATH))
 
 setup(
     name = "python-spidermonkey",
-    version = "0.1.01",
+    version = "0.2.01",
     license = "MIT",
-    author = "Paul J. Davis",
-    author_email = "paul.joseph.davis@gmail.com",
+    author = "Gary J. Wisniewski",
+    author_email = "garyw@blueseastech.com",
     description = "JavaScript / Python bridge.",
     long_description = __doc__,
-    url = "http://github.com/davisp/python-spidermonkey",
-    download_url = "http://github.com/davisp/python-spidermonkey.git",
+    url = "http://github.com/garywiz/python-spidermonkey",
+    download_url = "http://github.com/garywiz/python-spidermonkey.git",
     zip_safe = False,
     
     classifiers = [

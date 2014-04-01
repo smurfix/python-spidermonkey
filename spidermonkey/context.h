@@ -34,11 +34,12 @@ typedef struct {
     PyDictObject* classes;
     PySetObject* objects;
     PySetObject* root_objects;
-    uint32 branch_count;
+    unsigned int branch_count;
     long max_heap;
     time_t max_time;
     time_t start_time;
     char thread_active;
+    JSCompartment* orig_compartment;
 } Context;
 
 PyObject* Context_get_class(Context* cx, const char* key);

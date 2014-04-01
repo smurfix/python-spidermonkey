@@ -14,7 +14,7 @@
 //#include <jscntxt.h>
 
 // Forward decl for add_prop
-JSBool set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval);
+JSBool set_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool strict, JS::MutableHandleValue rval);
 
 char Context_thread_OK(Context* self)
 {
@@ -49,21 +49,20 @@ PyObject* get_cxglobal(Context* self)
     return ret;
 }
 
-JSBool add_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
+JSBool add_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JS::MutableHandleValue rval)
 {
-    JSObject* obj = NULL;
+    JSObject* obj;
 
-    if(JSVAL_IS_NULL(*rval) || !JSVAL_IS_OBJECT(*rval)) return JS_TRUE;
+    if (rval.isNull() || rval.isPrimitive()) return JS_TRUE;
 
-    obj = JSVAL_TO_OBJECT(*rval);
+    obj = &rval.toObject();
     if(!JS_ObjectIsFunction(jscx, obj))
 	return JS_TRUE;
     
     return set_prop(jscx, jsobj, keyid, JS_TRUE, rval);
 }
 
-JSBool
-del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
+JSBool del_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool *succeeded)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -71,6 +70,8 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     PyObject* global = NULL;
     JSBool ret = JS_FALSE;
     jsval key;
+
+    *succeeded = FALSE;
 
     JS_IdToValue(jscx, keyid, &key);
 
@@ -94,6 +95,7 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
     // Bail if the global doesn't have a __delitem__
     if(!PyObject_HasAttrString(global, "__delitem__"))
     {
+	*succeeded = FALSE;
         ret = JS_TRUE;
         goto done;
     }
@@ -103,6 +105,7 @@ del_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
 
     if(PyObject_DelItem(global, pykey) < 0) goto done;
 
+    *succeeded = TRUE;
     ret = JS_TRUE;
 
 done:
@@ -112,8 +115,7 @@ done:
     return ret;
 }
 
-JSBool
-get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
+JSBool get_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -154,8 +156,9 @@ get_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, jsval* rval)
         goto done;
     }
 
-    *rval = py2js(pycx, pyval);
-    if(JSVAL_IS_VOID(*rval)) goto done;
+    rval.set(py2js(pycx, pyval));
+    if (rval.isUndefined()) goto done;
+
     ret = JS_TRUE;
 
 done:
@@ -165,8 +168,7 @@ done:
     return ret;
 }
 
-JSBool
-set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rval)
+JSBool set_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool strict, JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -196,7 +198,7 @@ set_prop(JSContext* jscx, JSObject* jsobj, jsid keyid, JSBool strict, jsval* rva
 
     if(Context_has_access(pycx, jscx, global, pykey) <= 0) goto done;
 
-    pyval = js2py(pycx, *rval);
+    pyval = js2py(pycx, rval);
     if(pyval == NULL) goto done;
 
     if(PyObject_SetItem(global, pykey, pyval) < 0) goto done;
@@ -210,8 +212,7 @@ done:
     return ret;
 }
 
-JSBool
-resolve(JSContext* jscx, JSObject* jsobj, jsid keyid)
+JSBool resolve(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid)
 {
     Context* pycx = NULL;
     PyObject* pykey = NULL;
@@ -279,7 +280,7 @@ js_global_class = {
     JS_EnumerateStub,
     resolve,
     JS_ConvertStub,
-    JS_FinalizeStub,
+    NULL,
     JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
@@ -317,7 +318,7 @@ branch_cb(JSContext* jscx)
 	if (gcbytes > pycx->max_heap)
 	{
 	    // First see if garbage collection gets under the threshold.
-	    JS_GC(jscx);
+	    JS_GC(JS_GetRuntime(jscx));
 	    gcbytes = JS_GetGCParameter(pycx->rt->rt, JSGC_BYTES);
 	    if(gcbytes > pycx->max_heap)
 	    {
@@ -352,12 +353,12 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     int strict = 0;
     uint32_t jsopts;
 
-    char* keywords[] = {"runtime", "glbl", "access", "strict", NULL};
+    const char* keywords[] = {"runtime", "glbl", "access", "strict", NULL};
 
     if(!PyArg_ParseTupleAndKeywords(
         args, kwargs,
         "O!|OOI",
-        keywords,
+        (char **)keywords,	// Python headers need to change, then we should remove this
         RuntimeType, &runtime,
         &global,
         &access,
@@ -410,6 +411,8 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
         goto error;
     }
 
+    JS_SetOptions(self->cx, JSOPTION_VAROBJFIX);
+
     JS_BeginRequest(self->cx);
 
     /*
@@ -423,12 +426,15 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     JS_SetContextPrivate(self->cx, self);
 
     // Setup the root of the property lookup doodad.
-    self->root = JS_NewCompartmentAndGlobalObject(self->cx, &js_global_class, NULL);
+    self->root = JS_NewGlobalObject(self->cx, &js_global_class, nullptr);
     if(self->root == NULL)
     {
         PyErr_SetString(PyExc_RuntimeError, "Error creating root object.");
         goto error;
     }
+
+    self->orig_compartment = JS_EnterCompartment(self->cx, self->root);
+    JS_SetGlobalObject(self->cx, self->root);
 
     if(!JS_InitStandardClasses(self->cx, self->root))
     {
@@ -461,9 +467,9 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     jsopts = JS_GetOptions(self->cx);
     jsopts |= JSOPTION_VAROBJFIX;
     if (strict) {
-        jsopts |= JSOPTION_STRICT;
+        jsopts |= JSOPTION_EXTRA_WARNINGS;
     } else {
-        jsopts &= ~JSOPTION_STRICT;
+        jsopts &= ~JSOPTION_EXTRA_WARNINGS;
     }
     JS_SetOptions(self->cx, jsopts);
     
@@ -495,6 +501,7 @@ Context_dealloc(Context* self)
 {
     if (self->cx != NULL)
     {
+	JS_LeaveCompartment(self->cx, self->orig_compartment);
         JS_DestroyContext(self->cx);
     }
 
@@ -646,15 +653,15 @@ Context_execute(Context* self, PyObject* args, PyObject* kwargs)
     JSString* script = NULL;
     const jschar* schars = NULL;
     JSBool started_counter = JS_FALSE;
-    char *fname = "<anonymous JavaScript>";
+    const char *fname = "<anonymous JavaScript>";
     unsigned int lineno = 1;
     size_t slen;
     jsval rval;
 
-    char *keywords[] = {"code", "filename", "lineno", NULL};
+    const char *keywords[] = {"code", "filename", "lineno", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", keywords,
-                                    &obj, &fname, &lineno))
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", (char **)keywords,
+                                    &obj, (char *)&fname, &lineno))
 	return NULL;
 
     if (!Context_thread_OK(self))
@@ -728,8 +735,7 @@ Context_set_error_reporter(Context* self, PyObject* errfunc)
     Py_RETURN_NONE;
 }
 
-PyObject*
-Context_compile(Context* self, PyObject* args, PyObject* kwargs)
+PyObject* Context_compile(Context* self, PyObject* args, PyObject* kwargs)
 {
     PyObject* obj = NULL;
     PyObject* ret = NULL;
@@ -737,15 +743,15 @@ Context_compile(Context* self, PyObject* args, PyObject* kwargs)
     JSObject* root = NULL;
     JSString* script = NULL;
     const jschar* schars = NULL;
-    char *fname = "<anonymous compiled JavaScript>";
+    const char *fname = "<anonymous compiled JavaScript>";
     unsigned int lineno = 1;
     size_t slen;
-    JSObject *rvalobj;
+    JSScript *rvalobj;
 
-    char *keywords[] = {"code", "filename", "lineno", NULL};
+    const char *keywords[] = {"code", "filename", "lineno", NULL};
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", keywords,
-                                    &obj, &fname, &lineno))
+    if(!PyArg_ParseTupleAndKeywords(args, kwargs, "O|sI", (char **)keywords,
+                                    &obj, (char *)&fname, &lineno))
 	return NULL;
 
     if (!Context_thread_OK(self))
@@ -787,34 +793,6 @@ success:
 }
 
 PyObject*
-Context_set_context_thread(Context* self, PyObject* args, PyObject* kwargs)
-{
-    if (self->thread_active) {
-	PyErr_SetString(JSError, "Cannot activate context in another thread.  Still active elsewhere.");
-	return NULL;
-    }
-
-    JS_SetContextThread(self->cx);
-    self->thread_active = 1;
-
-    Py_RETURN_NONE;
-}
-
-PyObject*
-Context_clear_context_thread(Context* self, PyObject* args, PyObject* kwargs)
-{
-    if (!self->thread_active) {
-	PyErr_SetString(JSError, "Cannot detach from thread.  Already detached.");
-	return NULL;
-    }
-
-    JS_ClearContextThread(self->cx);
-    self->thread_active = 0;
-
-    Py_RETURN_NONE;
-}
-
-PyObject*
 Context_gc(Context* self, PyObject* args, PyObject* kwargs)
 {
     if (!Context_thread_OK(self))
@@ -823,7 +801,7 @@ Context_gc(Context* self, PyObject* args, PyObject* kwargs)
     Py_DECREF(self->objects);
     self->objects = (PySetObject*) PySet_New(NULL);
 
-    JS_GC(self->cx);
+    JS_GC(JS_GetRuntime(self->cx));
 
     Py_INCREF(self);
     return (PyObject*) self;
@@ -905,18 +883,6 @@ static PyMethodDef Context_methods[] = {
         (PyCFunction)Context_set_error_reporter,
         METH_O,
         "Specify a callable error reporter."
-    },
-    {
-	"detach_from_thread",
-	(PyCFunction)Context_clear_context_thread,
-	METH_NOARGS,
-	"Disconnect from current thread (must not perform any operations until reconnect)"
-    },
-    {
-	"attach_to_thread",
-	(PyCFunction)Context_set_context_thread,
-	METH_NOARGS,
-	"Connect to current thread (must be called before any ops on new thread)"
     },
     {
         "gc",

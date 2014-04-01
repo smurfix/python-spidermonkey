@@ -14,12 +14,20 @@ Runtime_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     Runtime* self = NULL;
     unsigned int stacksize = 0x2000000; // 32 MiB heap size.
 
-    if(!PyArg_ParseTuple(args, "|I", &stacksize)) goto error;
+    if (!PyArg_ParseTuple(args, "|I", &stacksize)) goto error;
+
+#ifdef SPIDERMONKEY_31
+    if (!JS_Init())
+    {
+        PyErr_SetString(JSError, "Failed to initilaize JS engine");
+        goto error;
+    }
+#endif
 
     self = (Runtime*) type->tp_alloc(type, 0);
     if(self == NULL) goto error;
 
-    self->rt = JS_NewRuntime(stacksize);
+    self->rt = JS_NewRuntime(stacksize, JS_NO_HELPER_THREADS);
     if(self->rt == NULL)
     {
         PyErr_SetString(JSError, "Failed to allocate new JSRuntime.");
@@ -59,12 +67,12 @@ Runtime_new_context(Runtime* self, PyObject* args, PyObject* kwargs)
     PyObject* global = Py_None;
     PyObject* access = Py_None;
 
-    char* keywords[] = {"glbl", "access", NULL};
+    const char* const keywords[] = {"glbl", "access", NULL};
 
     if(!PyArg_ParseTupleAndKeywords(
         args, kwargs,
         "|OO",
-        keywords,
+        (char **)keywords,	// These can be eliminated when Python updates their API headers
         &global,
         &access
     )) goto error;

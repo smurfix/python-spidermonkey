@@ -14,6 +14,6 @@
     iterators.
 */
 
-JSBool new_py_iter(Context* cx, PyObject* obj, jsval* rval);
+JSBool new_py_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval);
 
 #endif
