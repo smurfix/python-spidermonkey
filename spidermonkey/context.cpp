@@ -351,9 +351,10 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     PyObject* strongglobal = NULL;
     PyObject* access = NULL;
     int strict = 0;
+    int jit = 1;
     uint32_t jsopts;
 
-    const char* keywords[] = {"runtime", "glbl", "access", "strict", NULL};
+    const char* keywords[] = {"runtime", "glbl", "access", "strict", "enable_jit", NULL};
 
     if(!PyArg_ParseTupleAndKeywords(
         args, kwargs,
@@ -362,12 +363,15 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
         RuntimeType, &runtime,
         &global,
         &access,
-        &strict
+        &strict,
+	&jit
     )) goto error;
 
     if(global == Py_None) global = NULL;
     if(access == Py_None) access = NULL;
-    strict &= 1;  /* clamp at 1 */
+
+    strict &= 1;
+    jit &= 1; 
 
     if(global != NULL)
     {
@@ -467,10 +471,16 @@ Context_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     jsopts = JS_GetOptions(self->cx);
     jsopts |= JSOPTION_VAROBJFIX;
     if (strict) {
-        jsopts |= JSOPTION_EXTRA_WARNINGS;
+        jsopts |= (JSOPTION_EXTRA_WARNINGS | JSOPTION_STRICT_MODE);
     } else {
-        jsopts &= ~JSOPTION_EXTRA_WARNINGS;
+        jsopts &= ~(JSOPTION_EXTRA_WARNINGS | JSOPTION_STRICT_MODE);
     }
+    if (jit) {
+        jsopts |= (JSOPTION_BASELINE | JSOPTION_ION | JSOPTION_TYPE_INFERENCE);
+    } else {
+        jsopts &= ~(JSOPTION_BASELINE | JSOPTION_ION | JSOPTION_TYPE_INFERENCE);
+    }
+
     JS_SetOptions(self->cx, jsopts);
     
     Py_INCREF(runtime);
