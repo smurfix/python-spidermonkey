@@ -23,181 +23,138 @@ get_py_obj(JSObject* obj)
     return (PyObject*) JSVAL_TO_PRIVATE(priv);
 }
 
-JSBool
-js_del_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool *succeeded)
+JSBool js_del_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool *succeeded)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
-    PyObject* pykey = NULL;
-    JSBool ret = JS_FALSE;
     jsval key;
 
     JS_IdToValue(jscx, keyid, &key);
 
-    pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get JS Context.");
-        goto error;
-    }
+    PSM_GET_PRIVATE_CONTEXT(pycx, jscx, JS_FALSE);
     
     pyobj = get_py_obj(jsobj);
-    if(pyobj == NULL) goto error;
+    if (pyobj == NULL) 
+	return JS_FALSE;
     
-    pykey = js2py(pycx, key);
-    if(pykey == NULL) goto error;
+    CPyAutoObject pykey(js2py(pycx, key));
 
-    if(Context_has_access(pycx, jscx, pyobj, pykey) <= 0) goto error;
+    if (pykey.isNull())
+	return JS_FALSE;
 
-    if(PyObject_DelItem(pyobj, pykey) < 0)
-    {
+    if (Context_has_access(pycx, jscx, pyobj, pykey) <= 0)
+	return JS_FALSE;
+
+    if (PyObject_DelItem(pyobj, pykey) < 0) {
         PyErr_Clear();
-        if(PyObject_DelAttr(pyobj, pykey) < 0)
-        {
+        if (PyObject_DelAttr(pyobj, pykey) < 0) {
             PyErr_Clear();
             *succeeded = FALSE;
         }
     }
    
-    ret = JS_TRUE;
-    goto success;
-    
-error:
-success:
-    Py_XDECREF(pykey);
-    return ret;
+    return JS_TRUE;
 }
 
 JSBool js_get_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
-    PyObject* pykey = NULL;
-    PyObject* utf8 = NULL;
-    PyObject* pyval = NULL;
-    JSBool ret = JS_FALSE;
     const char* data;
     jsval key;
 
     JS_IdToValue(jscx, keyid, &key);
 
-    pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get JS Context.");
-        goto done;
-    }
+    PSM_GET_PRIVATE_CONTEXT(pycx, jscx, JS_FALSE);
     
     pyobj = get_py_obj(jsobj);
-    if(pyobj == NULL) goto done;
+    if (pyobj == NULL) 
+	return JS_FALSE;
     
-    pykey = js2py(pycx, key);
-    if(pykey == NULL) goto done;
+    CPyAutoObject pykey(js2py(pycx, key));
+    if (pykey.isNull())
+	return JS_FALSE;
 
-    if(Context_has_access(pycx, jscx, pyobj, pykey) <= 0) goto done;
+    if (Context_has_access(pycx, jscx, pyobj, pykey) <= 0) 
+	return JS_FALSE;
     
-    // Yeah. It's ugly as sin.
-    if(PyString_Check(pykey) || PyUnicode_Check(pykey))
-    {
-        utf8 = PyUnicode_AsUTF8String(pykey);
-        if(utf8 == NULL) goto done;
+    // Yeah. It's ugly as sin. 
+    // (garyw: This is an old comment from somewhere.  Investigate.)
+
+    if (PyString_Check(pykey) || PyUnicode_Check(pykey)) {
+        CPyAutoObject utf8(PyUnicode_AsUTF8String(pykey));
+        if (utf8.isNull())
+	    return JS_FALSE;
 
         data = PyString_AsString(utf8);
-        if(data == NULL) goto done;
+        if (data == NULL) 
+	    return JS_FALSE;
 
-        if(strcmp("__iterator__", data) == 0)
-        {
-            if(!new_py_iter(pycx, pyobj, rval)) goto done;
+        if (strcmp("__iterator__", data) == 0) {
+            if (!new_py_iter(pycx, pyobj, rval))
+		return JS_FALSE;
             if (!rval.isUndefined())
-            {
-                ret = JS_TRUE;
-                goto done;
-            }
-        }
+		return JS_TRUE;
+	}
     }
 
-    pyval = PyObject_GetItem(pyobj, pykey);
-    if(pyval == NULL)
-    {
+    CPyAutoObject pyval(PyObject_GetItem(pyobj, pykey));
+
+    if (pyval.isNull()) {
         PyErr_Clear();
         pyval = PyObject_GetAttr(pyobj, pykey);
-        if(pyval == NULL)
-        {
+        if (pyval.isNull()) {
             PyErr_Clear();
-            ret = JS_TRUE;
             rval.setUndefined();
-            goto done;
-        }
+	    return JS_TRUE;
+	}
     }
 
     rval.set(py2js(pycx, pyval));
-    if(rval.isUndefined()) goto done;
-    ret = JS_TRUE;
+    if(rval.isUndefined())
+	return JS_FALSE;
 
-done:
-    Py_XDECREF(pykey);
-    Py_XDECREF(pyval);
-    Py_XDECREF(utf8);
-
-    return ret;
+    return JS_TRUE;
 }
 
-JSBool
-js_set_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool strict, JS::MutableHandleValue rval)
+JSBool js_set_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, JSBool strict, 
+		   JS::MutableHandleValue rval)
 {
     Context* pycx = NULL;
-    PyObject* pyobj = NULL;
-    PyObject* pykey = NULL;
-    PyObject* pyval = NULL;
-    JSBool ret = JS_FALSE;
     jsval key;
 
     JS_IdToValue(jscx, keyid, &key);
     
-    pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
-        JS_ReportError(jscx, "Failed to find a Python Context.");
-        goto error;
-    }
+    PSM_GET_PRIVATE_CONTEXT(pycx, jscx, JS_FALSE);
     
-    pyobj = get_py_obj(jsobj);
-    if(pyobj == NULL)
-    {
+    PyObject *pyobj = get_py_obj(jsobj);
+    if (pyobj == NULL) {
         JS_ReportError(jscx, "Failed to find a Python object.");
-        goto error;
+	return JS_FALSE;
     }
     
-    pykey = js2py(pycx, key);
-    if(pykey == NULL)
-    {
+    CPyAutoObject pykey(js2py(pycx, key));
+    if (pykey.isNull()) {
         JS_ReportError(jscx, "Failed to convert key to Python.");
-        goto error;
+	return JS_FALSE;
     }
 
-    if(Context_has_access(pycx, jscx, pyobj, pykey) <= 0) goto error;
+    if (Context_has_access(pycx, jscx, pyobj, pykey) <= 0) 
+	return JS_FALSE;
 
-    pyval = js2py(pycx, rval);
-    if(pyval == NULL)
-    {
+    CPyAutoObject pyval(js2py(pycx, rval));
+    if (pyval == NULL) {
         JS_ReportError(jscx, "Failed to convert value to Python.");
-        goto error;
+	return JS_FALSE;
     }
 
-    if(PyObject_SetItem(pyobj, pykey, pyval) < 0)
-    {
+    if (PyObject_SetItem(pyobj, pykey, pyval) < 0) {
         PyErr_Clear();
-        if(PyObject_SetAttr(pyobj, pykey, pyval) < 0) goto error;
+        if (PyObject_SetAttr(pyobj, pykey, pyval) < 0)
+	    return JS_FALSE;
     }
 
-    ret = JS_TRUE;
-    goto success;
-    
-error:
-success:
-    Py_XDECREF(pykey);
-    Py_XDECREF(pyval);
-    return ret;
+    return JS_TRUE;
 }
 
 void js_finalize(JSFreeOp*, JSObject* jsobj)
@@ -208,170 +165,121 @@ void js_finalize(JSFreeOp*, JSObject* jsobj)
     Py_DECREF(pyobj);
 }
 
-PyObject*
-mk_args_tuple(Context* pycx, JSContext* jscx, unsigned argc, jsval* argv)
+PyObject* mk_args_tuple(Context* pycx, JSContext* jscx, unsigned argc, jsval* argv)
 {
-    PyObject* tpl = NULL;
     PyObject* tmp = NULL;
     unsigned idx;
     
-    tpl = PyTuple_New(argc);
-    if(tpl == NULL)
-    {
+    CPyAutoObject tpl(PyTuple_New(argc));
+    if (tpl.isNull()) {
         JS_ReportError(jscx, "Failed to build args value.");
-        goto error;
+	return NULL;
     }
     
-    for(idx = 0; idx < argc; idx++)
-    {
+    for (idx = 0; idx < argc; idx++) {
         tmp = js2py(pycx, argv[idx]);
-        if(tmp == NULL) goto error;
-        PyTuple_SET_ITEM(tpl, idx, tmp);
+        if (!tmp)
+	    return NULL;
+        PyTuple_SET_ITEM((PyObject*)tpl, idx, tmp);
     }
 
-    goto success;
-
-error:
-    Py_XDECREF(tpl);
-success:
-    return tpl;
+    return tpl.asNew();
 }
 
-JSBool
-js_call(JSContext* jscx, unsigned argc, jsval* vp)
+JSBool js_call(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
-    PyObject* pyobj = NULL;
-    PyObject* tpl = NULL;
-    PyObject* ret = NULL;
-    PyObject* attrcheck = NULL;
-    JSBool jsret = JS_FALSE;
-    jsval rval;
     jsval *argv = JS_ARGV(jscx, vp);
     jsval funcobj = JS_CALLEE(jscx, vp);
 
-    pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
-        JS_ReportError(jscx, "Failed to get Python context.");
-        goto error;
-    }
+    PSM_GET_PRIVATE_CONTEXT(pycx, jscx, JS_FALSE);
+
+    PyObject *pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
     
-    pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
-    
-    if(!PyCallable_Check(pyobj))
-    {
+    if(!PyCallable_Check(pyobj)) {
         JS_ReportError(jscx, "Object not callable, unable to apply");
-        goto error;
+	return JS_FALSE;
     }
 
     // Use '__call__' as a notice that we want to execute a function.
-    attrcheck = PyString_FromString("__call__");
-    if(attrcheck == NULL) goto error;
+    CPyAutoObject attrcheck(PyString_FromString("__call__"));
+    if (attrcheck.isNull())
+	return JS_FALSE;
 
-    if(Context_has_access(pycx, jscx, pyobj, attrcheck) <= 0) goto error;
+    if (Context_has_access(pycx, jscx, pyobj, attrcheck) <= 0) 
+	return JS_FALSE;
 
-    tpl = mk_args_tuple(pycx, jscx, argc, argv);
-    if(tpl == NULL) goto error;
+    CPyAutoObject tpl(mk_args_tuple(pycx, jscx, argc, argv));
+    if (tpl.isNull())
+	return JS_FALSE;
     
-    ret = PyObject_Call(pyobj, tpl, NULL);
-    if(ret == NULL)
-    {
-        if(!PyErr_Occurred())
-        {
+    CPyAutoObject ret(PyObject_Call(pyobj, tpl, NULL));
+    if (ret.isNull()){
+	if(!PyErr_Occurred()) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to call object.");
         }
         JS_ReportError(jscx, "Failed to call object.");
-        goto error;
+	return JS_FALSE;
     }
     
-    rval = py2js(pycx, ret);
+    jsval rval = py2js(pycx, ret);
     JS_SET_RVAL(jscx, vp, rval);
 
-    if(JSVAL_IS_VOID(rval))
-    {
+    if (JSVAL_IS_VOID(rval)) {
         JS_ReportError(jscx, "Failed to convert Python return value.");
-        goto error;
+	return JS_FALSE;
     }
 
-    jsret = JS_TRUE;
-    goto success;
-
-error:
-success:
-    Py_XDECREF(tpl);
-    Py_XDECREF(ret);
-    Py_XDECREF(attrcheck);
-    return jsret;
+    return JS_TRUE;
 }
 
-JSBool
-js_ctor(JSContext* jscx, unsigned argc, jsval* vp)
+JSBool js_ctor(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
-    PyObject* pyobj = NULL;
-    PyObject* tpl = NULL;
-    PyObject* ret = NULL;
-    PyObject* attrcheck = NULL;
-    JSBool jsret = JS_FALSE;
     jsval *argv = JS_ARGV(jscx, vp);
     jsval funcobj = JS_CALLEE(jscx, vp);
     jsval rval;
 
-    pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
-        JS_ReportError(jscx, "Failed to get Python context.");
-        goto error;
-    }
+    PSM_GET_PRIVATE_CONTEXT(pycx, jscx, JS_FALSE);
     
-    pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
-    
-    if(!PyCallable_Check(pyobj))
-    {
+    PyObject *pyobj = get_py_obj(JSVAL_TO_OBJECT(funcobj));
+    if (!PyCallable_Check(pyobj)) {
         JS_ReportError(jscx, "Object not callable, unable to construct");
-        goto error;
+	return JS_FALSE;
     }
 
-    if(!PyType_Check(pyobj))
-    {
+    if(!PyType_Check(pyobj)) {
         PyErr_SetString(PyExc_TypeError, "Object is not a Type object.");
-        goto error;
+	return JS_FALSE;
     }
 
     // Use '__init__' to signal use as a constructor.
-    attrcheck = PyString_FromString("__init__");
-    if(attrcheck == NULL) goto error;
+    CPyAutoObject attrcheck(PyString_FromString("__init__"));
+    if (attrcheck.isNull())
+	return JS_FALSE;
 
-    if(Context_has_access(pycx, jscx, pyobj, attrcheck) <= 0) goto error;
+    if (Context_has_access(pycx, jscx, pyobj, attrcheck) <= 0) 
+	return JS_FALSE;
 
-    tpl = mk_args_tuple(pycx, jscx, argc, argv);
-    if(tpl == NULL) goto error;
+    CPyAutoObject tpl(mk_args_tuple(pycx, jscx, argc, argv));
+    if (tpl.isNull())
+	return JS_FALSE;
     
-    ret = PyObject_CallObject(pyobj, tpl);
-    if(ret == NULL)
-    {
+    CPyAutoObject ret(PyObject_CallObject(pyobj, tpl));
+    if (ret.isNull()) {
         JS_ReportError(jscx, "Failed to construct object.");
-        goto error;
+	return JS_FALSE;
     }
     
     rval = py2js(pycx, ret);
-    if(JSVAL_IS_VOID(rval))
-    {
+    if (JSVAL_IS_VOID(rval)) {
         JS_ReportError(jscx, "Failed to convert Python return value.");
-        goto error;
+	return JS_FALSE;
     }
 
     JS_SET_RVAL(jscx, vp, rval);
 
-    jsret = JS_TRUE;
-    goto success;
-
-error:
-success:
-    Py_XDECREF(tpl);
-    Py_XDECREF(ret);
-    return jsret;
+    return JS_TRUE;
 }
 
 void jsclass_finalizer(void *data)
@@ -381,30 +289,25 @@ void jsclass_finalizer(void *data)
     free(jsc);
 }
 
-JSClass*
-create_class(Context* cx, PyObject* pyobj)
+JSClass* create_class(Context* cx, PyObject* pyobj)
 {
     PyObject* curr = NULL;
-    JSClass* jsclass = NULL;
-    JSClass* ret = NULL;
-    char* classname = NULL;
     int flags = JSCLASS_HAS_RESERVED_SLOTS(1);
 
     curr = Context_get_class(cx, pyobj->ob_type->tp_name);
-    if(curr != NULL) return (JSClass*) HashCObj_AsVoidPtr(curr);
+    if (curr != NULL) 
+	return (JSClass*) HashCObj_AsVoidPtr(curr);
 
-    jsclass = (JSClass*) calloc(1, sizeof(JSClass));
-    if(jsclass == NULL)
-    {
+    CPyAutoFreeJSClassPtr jsclass((JSClass*) calloc(1, sizeof(JSClass)));
+    if (jsclass.isNull()) {
         PyErr_NoMemory();
-        goto error;
+	return NULL;
     }
    
-    classname = (char*) malloc(strlen(pyobj->ob_type->tp_name)+sizeof(char));
-    if(classname == NULL)
-    {
+    CPyAutoFreeCharPtr classname((char*) malloc(strlen(pyobj->ob_type->tp_name)+sizeof(char)));
+    if (classname.isNull()) {
         PyErr_NoMemory();
-        goto error;
+	return NULL;
     }
     
     strcpy((char*) classname, pyobj->ob_type->tp_name);
@@ -426,17 +329,14 @@ create_class(Context* cx, PyObject* pyobj)
     jsclass->construct = js_ctor;
     
     curr = HashCObj_FromVoidPtr(jsclass, jsclass_finalizer);
-    if(curr == NULL) goto error;
-    if(Context_add_class(cx, pyobj->ob_type->tp_name, curr) < 0) goto error;
+    if (curr == NULL) 
+	return NULL;
 
-    ret = jsclass;
-    goto success;
+    if (Context_add_class(cx, pyobj->ob_type->tp_name, curr) < 0) 
+	return NULL;
 
-error:
-    if(jsclass != NULL) free(jsclass);
-    if(classname != NULL) free(classname);
-success:
-    return ret;
+    classname.steal();
+    return jsclass.steal();
 }
 
 PyObject* unwrap_pyobject(jsval val)
@@ -456,42 +356,33 @@ PyObject* unwrap_pyobject(jsval val)
     return ret;
 }
 
-jsval
-py2js_object(Context* cx, PyObject* pyobj)
+jsval py2js_object(Context* cx, PyObject* pyobj)
 {
     JSClass* klass = NULL;
     JSObject* jsobj = NULL;
     jsval pyval;
-    jsval ret = JSVAL_VOID;
    
-    Py_INCREF(pyobj);	/* This INCREF gets released by js_finalize */
-
     klass = create_class(cx, pyobj);
-    if(klass == NULL) goto error;
+    if (klass == NULL) 
+	return JSVAL_VOID;
 
     jsobj = JS_NewObject(cx->cx, klass, NULL, NULL);
-    if(jsobj == NULL)
-    {
+    if (jsobj == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create JS object.");
-        goto error;
+	return JSVAL_VOID;
     }
 
+    if (Context_add_object(cx, pyobj) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to store reference.");
+	return JSVAL_VOID;
+    }
+
+    Py_INCREF(pyobj);	/* This INCREF gets released by js_finalize */
+    
     pyval = PRIVATE_TO_JSVAL(pyobj);
     JS_SetReservedSlot(jsobj, 0, pyval);
 
-    if(Context_add_object(cx, pyobj) < 0)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to store reference.");
-        goto error;
-    }
-
-    ret = OBJECT_TO_JSVAL(jsobj);
-    goto success;
-
-error:
-    Py_XDECREF(pyobj);
-success:
-    return ret;
+    return OBJECT_TO_JSVAL(jsobj);
 }
 
 

@@ -50,4 +50,13 @@ char Context_thread_OK(Context* cs);
 
 extern PyTypeObject _ContextType;
 
+// Convenience macros
+
+#define PSM_GET_PRIVATE_CONTEXT(pyx, jfx, error_re) \
+    pyx = (Context *) JS_GetContextPrivate(jfx); \
+    if (pyx == NULL) { \
+      JS_ReportError(jfx, "Failed to get Python context."); \
+      return error_re; \
+    }
+
 #endif

@@ -20,6 +20,8 @@
 #pragma GCC diagnostic warning "-Winvalid-offsetof"
 #pragma GCC diagnostic warning "-Wunused-variable"
 
+#include "pyplus.h"
+
 #include "runtime.h"
 #include "context.h"
 
