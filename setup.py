@@ -157,7 +157,6 @@ def platform_config():
     else:
         raise RuntimeError("Unknown system name: %s" % sysname)
 
-    print nspr_config(config=config)
     return nspr_config(config=config)
 
 Distribution.global_options.append(("debug", None,
@@ -194,7 +193,7 @@ setup(
     
     setup_requires = [
         'setuptools>=7.2',
-        'nose>=0.10.0',
+        'nose>=1.3.0',
     ],
 
     ext_modules =  [

@@ -61,7 +61,7 @@ def test_bound_method_from_js_func(cx):
             return 4
     f = Foo()
     cx.add_global("dude", f.callme)
-    func = cx.execute("function(a) {return a * dude();}")
+    func = cx.execute("(function(a) {return a * dude();})")
     ret = func(3)
     t.eq(ret, 12)
 
