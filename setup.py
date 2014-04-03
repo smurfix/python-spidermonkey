@@ -40,11 +40,18 @@ from distutils.dist import Distribution
 from distutils.sysconfig import get_config_vars
 from setuptools import setup, Extension
 
-PREBUILT_PATH = os.path.abspath("../../src/mozjs-24.2.0/js/src/dist")
+MOZJS_SWITCH = "--mozjs-source"
+MOZJS_PATH = None
+USE_SYSTEM_LIB = True
 
 DEBUG = "--debug" in sys.argv
-USE_PREBUILT = "--prebuilt-library" in sys.argv
-USE_SYSTEM_LIB = not (USE_PREBUILT)
+
+if MOZJS_SWITCH in sys.argv:
+    MOZJS_PATH = os.path.abspath(os.path.join(sys.argv[sys.argv.index(MOZJS_SWITCH) + 1], 'js/src/dist'))
+    USE_SYSTEM_LIB = False
+    if not os.path.exists(MOZJS_PATH):
+        print "Error: Trying to use mozjs source build, but cannot find path: " + MOZJS_PATH
+        exit(1)
 
 # Remove strict-prototypes from any options, this allows CPP files to be compiled using gcc.  This is really
 # a bug in distutils.
@@ -135,10 +142,10 @@ def platform_config():
             "spidermonkey/%s-%s" % (sysname, machine)
             ]
 
-    if USE_PREBUILT:
-        config["include_dirs"] += [os.path.join(PREBUILT_PATH, "include")]
-        config["library_dirs"] += [os.path.join(PREBUILT_PATH, "lib")]
-        config["runtime_library_dirs"] = [os.path.join(PREBUILT_PATH, "lib")]
+    if MOZJS_PATH:
+        config["include_dirs"] += [os.path.join(MOZJS_PATH, "include")]
+        config["library_dirs"] += [os.path.join(MOZJS_PATH, "lib")]
+        config["runtime_library_dirs"] = [os.path.join(MOZJS_PATH, "lib")]
         config["libraries"] += ['mozjs-24']
         config["extra_compile_args"] += ["-Wl,-version-script,symverscript"]
         #config["extra_compile_args"] += ["-include RequiredDefines.h"]
@@ -161,8 +168,8 @@ def platform_config():
 
 Distribution.global_options.append(("debug", None,
                     "Build a DEBUG version of spidermonkey."))
-Distribution.global_options.append(("prebuilt-library", None,
-                    "Link against prebuilt library in %s." % PREBUILT_PATH))
+Distribution.global_options.append((MOZJS_SWITCH[2:] + "=", None,
+                    "Link against prebuilt library at specific location."))
 
 setup(
     name = "python-spidermonkey",
