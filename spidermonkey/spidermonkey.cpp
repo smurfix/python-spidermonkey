@@ -15,7 +15,7 @@
 PyObject* SpidermonkeyModule = NULL;
 PyTypeObject* RuntimeType = NULL;
 PyTypeObject* ContextType = NULL;
-PyTypeObject* ObjectType = NULL;
+PyTypeObject* PJObjectType = NULL;
 PyTypeObject* ArrayType = NULL;
 PyTypeObject* FunctionType = NULL;
 PyTypeObject* CompiledType = NULL;
@@ -34,13 +34,13 @@ initspidermonkey(void)
     
     if(PyType_Ready(&_RuntimeType) < 0) return;
     if(PyType_Ready(&_ContextType) < 0) return;
-    if(PyType_Ready(&_ObjectType) < 0) return;
+    if(PyType_Ready(&_PJObjectType) < 0) return;
     if(PyType_Ready(&_CompiledType) < 0) return;
 
-    _ArrayType.tp_base = &_ObjectType;
+    _ArrayType.tp_base = &_PJObjectType;
     if(PyType_Ready(&_ArrayType) < 0) return;
 
-    _FunctionType.tp_base = &_ObjectType;
+    _FunctionType.tp_base = &_PJObjectType;
     if(PyType_Ready(&_FunctionType) < 0) return;
 
     if(PyType_Ready(&_IteratorType) < 0) return;
@@ -63,9 +63,9 @@ initspidermonkey(void)
     Py_INCREF(ContextType);
     PyModule_AddObject(m, "Context", (PyObject*) ContextType);
 
-    ObjectType = &_ObjectType;
-    Py_INCREF(ObjectType);
-    PyModule_AddObject(m, "Object", (PyObject*) ObjectType);
+    PJObjectType = &_PJObjectType;
+    Py_INCREF(PJObjectType);
+    PyModule_AddObject(m, "Object", (PyObject*) PJObjectType);
 
     ArrayType = &_ArrayType;
     Py_INCREF(ArrayType);

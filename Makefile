@@ -9,6 +9,12 @@ help:
 build:
 	python setup.py build
 
+test:
+	python setup.py test
+
+test1:
+	python setup.py nosetests -x
+
 clean:
 	rm -rf build
 

@@ -12,7 +12,7 @@ ret;
 
 js_for_each_script = """
 var ret = [];
-for each(var v in data) {ret.push(v);}
+for (var v of data) {ret.push(v);}
 ret;
 """
 

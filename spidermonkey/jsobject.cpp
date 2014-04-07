@@ -8,120 +8,97 @@
 
 #include "spidermonkey.h"
 
-PyObject*
-make_object(PyTypeObject* type, Context* cx, jsval val)
+PyObject* make_object(PyTypeObject* type, Context* cx, jsval val)
 {
-    Object* wrapped = NULL;
-    PyObject* tpl = NULL;
-    PyObject* ret = NULL;
     JSObject* obj = JSVAL_TO_OBJECT(val);
 
-    JS_BeginRequest(cx->cx);
+    JSAutoRequest(cx->cx);
 
     // Wrap JS value
-    tpl = Py_BuildValue("(O)", cx);
-    if(tpl == NULL) goto error;
+    CPyAutoObject tpl(Py_BuildValue("(O)", cx));
+    if (tpl == NULL)
+	return NULL;
     
-    wrapped = (Object*) PyObject_CallObject((PyObject*) type, tpl);
-    if(wrapped == NULL) goto error;
+    CPyAutoPJObject wrapped((PJObject*)PyObject_CallObject((PyObject*) type, tpl));
+    if (wrapped.isNull())
+	return NULL;
     
     wrapped->val = val;
     wrapped->obj = obj;
 
-    if(!JS_AddNamedValueRoot(cx->cx, &(wrapped->val), "make_object"))
-    {
+    if (!JS_AddNamedValueRoot(cx->cx, &(wrapped->val), "make_object")) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to set GC root.");
-        goto error;
+	return NULL;
     }
 
-    ret = (PyObject*) wrapped;
-    goto success;
-
-error:
-    Py_XDECREF(wrapped);
-    ret = NULL; // In case it was AddRoot
-
-success:
-    Py_XDECREF(tpl);
-    JS_EndRequest(cx->cx);
-    return (PyObject*) ret;
+    return (PyObject*)wrapped.asNew();
 }
 
-PyObject*
-js2py_object(Context* cx, jsval val)
+PyObject* js2py_object(Context* cx, jsval val)
 {
-    return make_object(ObjectType, cx, val);
+    return make_object(PJObjectType, cx, val);
 }
 
-PyObject*
-Object_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
+PyObject* PJObject_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
 {
-    Object* self = NULL;
+    PJObject* self = NULL;
     Context* cx = NULL;
 
-    if(!PyArg_ParseTuple(args, "O!", ContextType, &cx)) goto error;
+    if (!PyArg_ParseTuple(args, "O!", ContextType, &cx)) {
+	ERROR("spidermonkey.Object.new");
+	return NULL;
+    }
 
-    self = (Object*) type->tp_alloc(type, 0);
-    if(self == NULL) goto error;
-    
+    self = (PJObject*) type->tp_alloc(type, 0);
+    if (self == NULL) {
+	ERROR("spidermonkey.Object.new");
+	return NULL;
+    }
+
     Py_INCREF(cx);
     self->cx = cx;
     self->val = JSVAL_VOID;
     self->obj = NULL;
-    goto success;
 
-error:
-    ERROR("spidermonkey.Object.new");
-success:
     return (PyObject*) self;
 }
 
-int
-Object_init(Object* self, PyObject* args, PyObject* kwargs)
+int PJObject_init(PJObject* self, PyObject* args, PyObject* kwargs)
 {
     return 0;
 }
 
-void
-Object_dealloc(Object* self)
+void PJObject_dealloc(PJObject* self)
 {
-    if(!JSVAL_IS_VOID(self->val))
-    {
-        JS_BeginRequest(self->cx->cx);
+    if (!JSVAL_IS_VOID(self->val)) {
+	JSAutoRequest request(self->cx->cx);
         JS_RemoveValueRoot(self->cx->cx, &(self->val));
-        JS_EndRequest(self->cx->cx);
     }
    
     Py_XDECREF(self->cx);
 }
 
-PyObject*
-Object_repr(Object* self)
+PyObject* PJObject_repr(PJObject* self)
 {
-    //jsval val;
     JSString* repr = NULL;
     const jschar* rchars = NULL;
     size_t rlen;
     
-    JS_BeginRequest(self->cx->cx);
+    JSAutoRequest request(self->cx->cx);
 
     repr = JS_ValueToString(self->cx->cx, self->val);
-    if(repr == NULL)
-    {
+    if (repr == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to convert to a string.");
-        JS_EndRequest(self->cx->cx);
         return NULL;
     }
 
     rchars = JS_GetStringCharsZ(self->cx->cx, repr);
     rlen = JS_GetStringLength(repr);
 
-    JS_EndRequest(self->cx->cx);
     return PyUnicode_Decode((const char*) rchars, rlen*2, "utf-16", "strict");
 }
 
-Py_ssize_t
-Object_length(Object* self)
+Py_ssize_t PJObject_length(PJObject* self)
 {
     JSContext* cx;
     JSObject* iter;
@@ -135,265 +112,219 @@ Object_length(Object* self)
         prototype as per JS for ... in ... semantics.
     */
     
-    JS_BeginRequest(self->cx->cx);
+    JSAutoRequest request(self->cx->cx);
+
     cx = self->cx->cx;
     iter = JS_NewPropertyIterator(cx, self->obj);
     status = JS_NextProperty(cx, iter, &pid);
-    while(status == JS_TRUE && !JSID_IS_VOID(pid))
-    {
+    while (status == JS_TRUE && !JSID_IS_VOID(pid)) {
         ret += 1;
         status = JS_NextProperty(cx, iter, &pid);
     }
 
-    JS_EndRequest(self->cx->cx);
     return ret;
 }
 
-PyObject*
-Object_getitem(Object* self, PyObject* key)
+PyObject* PJObject_getitem(PJObject* self, PyObject* key)
 {
-    PyObject* ret = NULL;
     jsval pval;
     jsid pid;
 
-    JS_BeginRequest(self->cx->cx);
+    JSAutoRequest request(self->cx->cx);
 
     pval = py2js(self->cx, key);
-    if(JSVAL_IS_VOID(pval)) return NULL;
+    if (JSVAL_IS_VOID(pval)) 
+	return NULL;
    
-    if(!JS_ValueToId(self->cx->cx, pval, &pid))
-    {
+    if(!JS_ValueToId(self->cx->cx, pval, &pid)) {
         PyErr_SetString(PyExc_KeyError, "Failed to get property id.");
-        goto done;
+	return NULL;
     }
     
-    if(!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval))
-    {
+    if(!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval)) {
         PyErr_SetString(PyExc_AttributeError, "Failed to get property.");
-        goto done;
+	return NULL;
     }
 
-    ret = js2py_with_parent(self->cx, pval, self->val);
-
-done:
-    JS_EndRequest(self->cx->cx);
-    return ret;
+    return js2py_with_parent(self->cx, pval, self->val);
 }
 
-int
-Object_setitem(Object* self, PyObject* key, PyObject* val)
+int PJObject_setitem(PJObject* self, PyObject* key, PyObject* val)
 {
-    int ret = -1;
     jsval pval;
     jsval vval;
     jsid pid;
 
-    JS_BeginRequest(self->cx->cx);
+    JSAutoRequest request(self->cx->cx);
 
     pval = py2js(self->cx, key);
-    if(JSVAL_IS_VOID(pval)) goto done;
+    if (JSVAL_IS_VOID(pval))
+	return -1;
    
-    if(!JS_ValueToId(self->cx->cx, pval, &pid))
-    {
+    if (!JS_ValueToId(self->cx->cx, pval, &pid)) {
         PyErr_SetString(PyExc_KeyError, "Failed to get property id.");
-        goto done;
+	return -1;
     }
    
-    if(val != NULL)
-    {
+    if (val != NULL) {
         vval = py2js(self->cx, val);
-        if(JSVAL_IS_VOID(vval)) goto done;
+        if (JSVAL_IS_VOID(vval))
+	    return -1;
 
-        if(!JS_SetPropertyById(self->cx->cx, self->obj, pid, &vval))
-        {
+        if (!JS_SetPropertyById(self->cx->cx, self->obj, pid, &vval)) {
             PyErr_SetString(PyExc_AttributeError, "Failed to set property.");
-            goto done;
+	    return -1;
         }
-    }
-    else
-    {
-        if(!JS_DeletePropertyById(self->cx->cx, self->obj, pid))
-        {
+    } else {
+        if (!JS_DeletePropertyById(self->cx->cx, self->obj, pid)) {
             PyErr_SetString(PyExc_AttributeError, "Failed to delete property.");
-            goto done;
+	    return -1;
         }
 
-        if(JSVAL_IS_VOID(vval))
-        {
+        if (JSVAL_IS_VOID(vval)) {
             PyErr_SetString(PyExc_AttributeError, "Unable to delete property.");
-            goto done;
+	    return -1;
         }
     }
 
-    ret = 0;
-done:
-    JS_EndRequest(self->cx->cx);
-    return ret;
+    return 0;
 }
 
-PyObject*
-Object_rich_cmp(Object* self, PyObject* other, int op)
+PyObject* PJObject_rich_cmp(PJObject* self, PyObject* other, int op)
 {
-    PyObject* key = NULL;
-    PyObject* val = NULL;
-    PyObject* otherval = NULL;
-    PyObject* ret = NULL;
-    JSContext* cx;
-    JSObject* iter;
-    JSBool status = JS_FALSE;
-    jsid pid;
-    jsval pkey;
-    jsval pval;
-    int llen;
-    int rlen;
-    int cmp;
-
-    JS_BeginRequest(self->cx->cx);
-
-    if(!PyMapping_Check(other) && !PySequence_Check(other))
-    {
+    if (!PyMapping_Check(other) && !PySequence_Check(other)) {
         PyErr_SetString(PyExc_ValueError, "Invalid rhs operand.");
-        goto error;
+	return NULL;
     }
 
-    if(op != Py_EQ && op != Py_NE) return Py_NotImplemented;
+    if (op != Py_EQ && op != Py_NE)
+	return Py_INCREF_RET(Py_NotImplemented);
 
-    llen = PyObject_Length((PyObject*)self);
-    if(llen < 0) goto error;
+    int llen = PyObject_Length((PyObject*)self);
+    if (llen < 0)
+	return NULL;
 
-    rlen = PyObject_Length(other);
-    if(rlen < 0) goto error;
+    int rlen = PyObject_Length(other);
+    if (rlen < 0) 
+	return NULL;
 
-    if(llen != rlen)
-    {
-        if(op == Py_EQ) ret = Py_False;
-        else ret = Py_True;
-        goto success;
+    if (llen != rlen) {
+        if (op == Py_EQ)
+	    return Py_INCREF_RET(Py_False);
+	return Py_INCREF_RET(Py_True);
     }
 
-    cx = self->cx->cx;
-    iter = JS_NewPropertyIterator(cx, self->obj);
-    status = JS_NextProperty(cx, iter, &pid);
-    while(status == JS_TRUE && !JSID_IS_VOID(pid))
-    {
-        if(!JS_IdToValue(self->cx->cx, pid, &pkey))
-        {
+    JSContext *cx = self->cx->cx;
+    JSAutoRequest request(cx);
+
+    jsid pid;
+    JSObject *iter = JS_NewPropertyIterator(cx, self->obj);
+    JSBool status = JS_NextProperty(cx, iter, &pid);
+
+    while (status == JS_TRUE && !JSID_IS_VOID(pid)) {
+	jsval pkey, pval;
+
+        if (!JS_IdToValue(self->cx->cx, pid, &pkey)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get key.");
-            goto error;
+	    return NULL;
         }
 
-        if(!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval))
-        {
+        if (!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get property.");
-            goto error;
+	    return NULL;
         }
 
-        key = js2py(self->cx, pkey);
-        if(key == NULL) goto error;
+        CPyAutoObject key(js2py(self->cx, pkey));
+        if (key.isNull())
+	    return NULL;
+	
+        CPyAutoObject val(js2py(self->cx, pval));
+        if (val.isNull())
+	    return NULL;
 
-        val = js2py(self->cx, pval);
-        if(val == NULL) goto error;
-
-        otherval = PyObject_GetItem(other, key);
-        if(otherval == NULL)
-        {
+        CPyAutoObject otherval(PyObject_GetItem(other, key));
+        if (otherval.isNull()) {
             PyErr_Clear();
-            if(op == Py_EQ) ret = Py_False;
-            else ret = Py_True;
-            goto success;
+            if (op == Py_EQ)
+		return Py_INCREF_RET(Py_False);
+	    return Py_INCREF_RET(Py_True);
         }
 
-        cmp = PyObject_Compare(val, otherval);
-        if(PyErr_Occurred()) goto error;
+        int cmp = PyObject_Compare(val, otherval);
+        if (PyErr_Occurred())
+	    return NULL;
 
-        if(cmp != 0)
-        {
-            if(op == Py_EQ) ret = Py_False;
-            else ret = Py_True;
-            goto success;
+        if (cmp != 0) {
+            if (op == Py_EQ)
+		return Py_INCREF_RET(Py_False);
+	    return Py_INCREF_RET(Py_True);
         }
-
-        Py_DECREF(key); key = NULL;
-        Py_DECREF(val); val = NULL;
-        Py_DECREF(otherval); otherval = NULL;
 
         status = JS_NextProperty(cx, iter, &pid);
     }
 
-    if(op == Py_EQ) ret = Py_True;
-    else ret = Py_False;
-
-    goto success;
-
-error:
-success:
-    Py_XDECREF(key);
-    Py_XDECREF(val);
-    Py_XDECREF(otherval);
-    // Inc ref the true or false return
-    if(ret == Py_True || ret == Py_False) Py_INCREF(ret);
-    JS_EndRequest(self->cx->cx);
-    return ret;
+    if (op == Py_EQ)
+	return Py_INCREF_RET(Py_True);
+    return Py_INCREF_RET(Py_False);
 }
 
-PyObject*
-Object_iterator(Object* self, PyObject* args, PyObject* kwargs)
+PyObject* PJObject_iterator(PJObject* self, PyObject* args, PyObject* kwargs)
 {
     return Iterator_Wrap(self->cx, self->obj);
 }
 
-static PyMemberDef Object_members[] = {
+static PyMemberDef PJObject_members[] = {
     {NULL}
 };
 
-static PyMethodDef Object_methods[] = {
+static PyMethodDef PJObject_methods[] = {
     {NULL}
 };
 
-PyMappingMethods Object_mapping = {
-    (lenfunc)Object_length,                     /*mp_length*/
-    (binaryfunc)Object_getitem,                 /*mp_subscript*/
-    (objobjargproc)Object_setitem               /*mp_ass_subscript*/
+PyMappingMethods PJObject_mapping = {
+    (lenfunc)PJObject_length,                     /*mp_length*/
+    (binaryfunc)PJObject_getitem,                 /*mp_subscript*/
+    (objobjargproc)PJObject_setitem               /*mp_ass_subscript*/
 };
 
-PyTypeObject _ObjectType = {
+PyTypeObject _PJObjectType = {
     PyObject_HEAD_INIT(NULL)
     0,                                          /*ob_size*/
     "spidermonkey.Object",                      /*tp_name*/
-    sizeof(Object),                             /*tp_basicsize*/
+    sizeof(PJObject),                           /*tp_basicsize*/
     0,                                          /*tp_itemsize*/
-    (destructor)Object_dealloc,                 /*tp_dealloc*/
+    (destructor)PJObject_dealloc,               /*tp_dealloc*/
     0,                                          /*tp_print*/
     0,                                          /*tp_getattr*/
     0,                                          /*tp_setattr*/
     0,                                          /*tp_compare*/
-    (reprfunc)Object_repr,                      /*tp_repr*/
+    (reprfunc)PJObject_repr,                    /*tp_repr*/
     0,                                          /*tp_as_number*/
     0,                                          /*tp_as_sequence*/
-    &Object_mapping,                            /*tp_as_mapping*/
+    &PJObject_mapping,                          /*tp_as_mapping*/
     0,                                          /*tp_hash*/
     0,                                          /*tp_call*/
     0,                                          /*tp_str*/
-    (getattrofunc)Object_getitem,               /*tp_getattro*/
-    (setattrofunc)Object_setitem,               /*tp_setattro*/
+    (getattrofunc)PJObject_getitem,             /*tp_getattro*/
+    (setattrofunc)PJObject_setitem,             /*tp_setattro*/
     0,                                          /*tp_as_buffer*/
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /*tp_flags*/
     "JavaScript Object",                        /*tp_doc*/
-    0,		                                    /*tp_traverse*/
-    0,		                                    /*tp_clear*/
-    (richcmpfunc)Object_rich_cmp,		        /*tp_richcompare*/
-    0,		                                    /*tp_weaklistoffset*/
-    (getiterfunc)Object_iterator,		        /*tp_iter*/
-    0,		                                    /*tp_iternext*/
-    Object_methods,                             /*tp_methods*/
-    Object_members,                             /*tp_members*/
+    0,		                                /*tp_traverse*/
+    0,		                                /*tp_clear*/
+    (richcmpfunc)PJObject_rich_cmp,             /*tp_richcompare*/
+    0,		                                /*tp_weaklistoffset*/
+    (getiterfunc)PJObject_iterator,	        /*tp_iter*/
+    0,		                                /*tp_iternext*/
+    PJObject_methods,                           /*tp_methods*/
+    PJObject_members,                           /*tp_members*/
     0,                                          /*tp_getset*/
     0,                                          /*tp_base*/
     0,                                          /*tp_dict*/
     0,                                          /*tp_descr_get*/
     0,                                          /*tp_descr_set*/
     0,                                          /*tp_dictoffset*/
-    (initproc)Object_init,                      /*tp_init*/
+    (initproc)PJObject_init,                    /*tp_init*/
     0,                                          /*tp_alloc*/
-    Object_new,                                 /*tp_new*/
+    PJObject_new,                               /*tp_new*/
 };

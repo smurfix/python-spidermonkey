@@ -15,7 +15,7 @@ js2py_array(Context* cx, jsval val)
 }
 
 Py_ssize_t
-Array_length(Object* self)
+Array_length(PJObject* self)
 {
     Py_ssize_t ret = -1;
     uint32_t length;
@@ -36,7 +36,7 @@ done:
 }
 
 PyObject*
-Array_get_item(Object* self, Py_ssize_t idx)
+Array_get_item(PJObject* self, Py_ssize_t idx)
 {
     PyObject* ret = NULL;
     jsval rval;
@@ -64,7 +64,7 @@ done:
 }
 
 int
-Array_set_item(Object* self, Py_ssize_t idx, PyObject* val)
+Array_set_item(PJObject* self, Py_ssize_t idx, PyObject* val)
 {
     int ret = -1;
     jsval pval;
@@ -89,7 +89,7 @@ done:
 }
 
 PyObject*
-Array_iterator(Object* self)
+Array_iterator(PJObject* self)
 {
     return PySeqIter_New((PyObject*) self);
 }
@@ -119,7 +119,7 @@ PyTypeObject _ArrayType = {
     PyObject_HEAD_INIT(NULL)
     0,                                          /*ob_size*/
     "spidermonkey.Array",                       /*tp_name*/
-    sizeof(Object),                             /*tp_basicsize*/
+    sizeof(PJObject),                           /*tp_basicsize*/
     0,                                          /*tp_itemsize*/
     0,                                          /*tp_dealloc*/
     0,                                          /*tp_print*/
@@ -138,12 +138,12 @@ PyTypeObject _ArrayType = {
     0,                                          /*tp_as_buffer*/
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /*tp_flags*/
     "JavaScript Array",                         /*tp_doc*/
-    0,		                                    /*tp_traverse*/
-    0,		                                    /*tp_clear*/
-    0,		                                    /*tp_richcompare*/
-    0,		                                    /*tp_weaklistoffset*/
-    (getiterfunc)Array_iterator,		        /*tp_iter*/
-    0,		                                    /*tp_iternext*/
+    0,		                                /*tp_traverse*/
+    0,		                                /*tp_clear*/
+    0,		                                /*tp_richcompare*/
+    0,		                                /*tp_weaklistoffset*/
+    (getiterfunc)Array_iterator,		/*tp_iter*/
+    0,		                                /*tp_iternext*/
     Array_methods,                              /*tp_methods*/
     Array_members,                              /*tp_members*/
     0,                                          /*tp_getset*/

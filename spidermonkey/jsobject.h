@@ -19,11 +19,13 @@ typedef struct {
     Context* cx;
     jsval val;
     JSObject* obj;
-} Object;
+} PJObject;
 
-extern PyTypeObject _ObjectType;
+extern PyTypeObject _PJObjectType;
 
 PyObject* make_object(PyTypeObject* type, Context* cx, jsval val);
 PyObject* js2py_object(Context* cx, jsval val);
+
+typedef CPyAuto<PJObject> CPyAutoPJObject;
 
 #endif

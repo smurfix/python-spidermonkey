@@ -21,8 +21,7 @@ get_js_slot(JSObject* obj, int slot)
     return (PyObject*) JSVAL_TO_PRIVATE(priv);
 }
 
-void
-finalize(JSFreeOp* jsfop, JSObject* jsobj)
+void finalize(JSFreeOp* jsfop, JSObject* jsobj)
 {
     PyObject* pyobj;
     PyObject* pyiter;
@@ -34,8 +33,7 @@ finalize(JSFreeOp* jsfop, JSObject* jsobj)
     Py_XDECREF(pyiter);
 }
 
-JSBool
-call(JSContext* jscx, unsigned argc, jsval* vp)
+JSBool call(JSContext* jscx, unsigned argc, jsval* vp)
 {
     jsval *argv = JS_ARGV(jscx, vp);
     jsval objval = JS_CALLEE(jscx, vp);
@@ -50,8 +48,7 @@ call(JSContext* jscx, unsigned argc, jsval* vp)
     return JS_TRUE;
 }
 
-JSBool
-is_for_each(JSContext* cx, JSObject* obj, JSBool* rval)
+JSBool is_for_of(JSContext* cx, JSObject* obj, JSBool* rval)
 {
     jsval slot = JS_GetReservedSlot(obj, SLOT_ITERFLAG);
 
@@ -60,92 +57,68 @@ is_for_each(JSContext* cx, JSObject* obj, JSBool* rval)
     return JS_TRUE;
 }
 
-JSBool
-def_next(JSContext* jscx, unsigned argc, jsval* vp)
+JSBool def_next(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
     PyObject* iter = NULL;
-    PyObject* next = NULL;
-    PyObject* value = NULL;
-    JSBool ret = JS_FALSE;
-    JSBool foreach = JS_FALSE;
+    JSBool for_of = JS_FALSE;
     jsval rval;
     JSObject *jsthis = JSVAL_TO_OBJECT(JS_THIS(jscx, vp));
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
+    if (pycx == NULL) {
         JS_ReportError(jscx, "Failed to get JS Context.");
-        goto done;
+	return JS_FALSE;
     }
 
     iter = get_js_slot(jsthis, SLOT_ITER);
-    if(!PyIter_Check(iter))
-    {
+    if (!PyIter_Check(iter)) {
         JS_ReportError(jscx, "Object is not an iterator.");
-        goto done;
+	return JS_FALSE;
     }
 
     pyobj = get_js_slot(jsthis, SLOT_PYOBJ);
-    if(pyobj == NULL)
-    {
+    if (pyobj == NULL) {
         JS_ReportError(jscx, "Failed to find iterated object.");
-        goto done;
+	return JS_FALSE;
     }
 
-    next = PyIter_Next(iter);
-    if(next == NULL && PyErr_Occurred())
-    {
-        goto done;
-    }
-    else if(next == NULL)
-    {
+    CPyAutoObject next(PyIter_Next(iter));
+    if (next == NULL && PyErr_Occurred()) {
+	return JS_FALSE;
+    } else if (next == NULL) {
 	JS_ThrowStopIteration(jscx);
-        goto done;
+	return JS_FALSE;
     }
 
-    if(!is_for_each(jscx, jsthis, &foreach))
-    {
+    if (!is_for_of(jscx, jsthis, &for_of)) {
         JS_ReportError(jscx, "Failed to get iterator flag.");
-        goto done;
+	return JS_FALSE;
     }
 
-    if(PyMapping_Check(pyobj) && foreach)
-    {
-        value = PyObject_GetItem(pyobj, next);
-        if(value == NULL)
-        {
+    if (PyMapping_Check(pyobj) && for_of) {
+        CPyAutoObject value(PyObject_GetItem(pyobj, next));
+        if (value == NULL) {
             JS_ReportError(jscx, "Failed to get value in 'for each'");
-            goto done;
+	    return JS_FALSE;
         }
         rval = py2js(pycx, value);
-    }
-    else
-    {
+    } else {
         rval = py2js(pycx, next);
     }
 
     JS_SET_RVAL(jscx, vp, rval);
 
-    if(!JSVAL_IS_VOID(rval)) ret = JS_TRUE;
-
-done:
-    Py_XDECREF(next);
-    Py_XDECREF(value);
-    return ret;
+    return JS_TRUE;
 }
 
-JSBool
-seq_next(JSContext* jscx, unsigned argc, jsval* vp)
+JSBool seq_next(JSContext* jscx, unsigned argc, jsval* vp)
 {
     Context* pycx = NULL;
     PyObject* pyobj = NULL;
     PyObject* iter = NULL;
-    PyObject* next = NULL;
-    PyObject* value = NULL;
-    JSBool ret = JS_FALSE;
-    JSBool foreach = JS_FALSE;
+    JSBool for_of = JS_FALSE;
     jsval rval;
     long maxval = -1;
     long currval = -1;
@@ -153,76 +126,65 @@ seq_next(JSContext* jscx, unsigned argc, jsval* vp)
     JSObject *jsthis = JSVAL_TO_OBJECT(valthis);
 
     pycx = (Context*) JS_GetContextPrivate(jscx);
-    if(pycx == NULL)
-    {
+    if (pycx == NULL) {
         JS_ReportError(jscx, "Failed to get JS Context.");
-        goto done;
+	return JS_FALSE;
     }
 
     pyobj = get_js_slot(jsthis, SLOT_PYOBJ);
-    if(!PySequence_Check(pyobj))
-    {
+    if (!PySequence_Check(pyobj)) {
         JS_ReportError(jscx, "Object is not a sequence.");
-        goto done;
+	return JS_FALSE;
     }
 
     maxval = PyObject_Length(pyobj);
-    if(maxval < 0) goto done;
+    if (maxval < 0) 
+	return JS_FALSE;
 
     iter = get_js_slot(jsthis, SLOT_ITER);
-    if(!PyInt_Check(iter))
-    {
+    if (!PyInt_Check(iter)) {
         JS_ReportError(jscx, "Object is not an integer.");
-        goto done;
+	return JS_FALSE;
     }
 
     currval = PyInt_AsLong(iter);
-    if(currval == -1 && PyErr_Occurred())
-    {
-        goto done;
+    if (currval == -1 && PyErr_Occurred()) {
+	return JS_FALSE;
     }
     
-    if(currval + 1 > maxval)
-    {
+    if (currval + 1 > maxval) {
 	JS_ThrowStopIteration(jscx);
-        goto done;
+	return JS_FALSE;
     }
 
-    next = PyInt_FromLong(currval + 1);
-    if(next == NULL) goto done;
+    CPyAutoObject next(PyInt_FromLong(currval + 1));
+    if (next == NULL)
+	return JS_FALSE;
 
     JS_SetReservedSlot(jsthis, SLOT_ITER, PRIVATE_TO_JSVAL(next));
 
-    if(!is_for_each(jscx, jsthis, &foreach))
+    if (!is_for_of(jscx, jsthis, &for_of))
     {
         JS_ReportError(jscx, "Failed to get iterator flag.");
-        goto done;
+	return JS_FALSE;
     }
 
-    if(foreach)
-    {
-        value = PyObject_GetItem(pyobj, iter);
-        if(value == NULL)
-        {
+    if (for_of) {
+        CPyAutoObject value(PyObject_GetItem(pyobj, iter));
+        if (value.isNull()) {
             JS_ReportError(jscx, "Failed to get array element in 'for each'");
-            goto done;
+	    return JS_FALSE;
         }
         rval = py2js(pycx, value);
-    }
-    else
-    {
+    } else {
         rval = py2js(pycx, iter);
     }
 
     next = iter;
 
     JS_SET_RVAL(jscx, vp, rval);
-    if(!JSVAL_IS_VOID(rval)) ret = JS_TRUE;
 
-done:
-    Py_XDECREF(next);
-    Py_XDECREF(value);
-    return ret;
+    return JS_TRUE;
 }
 
 static JSClass
@@ -251,117 +213,87 @@ static JSFunctionSpec js_seq_iter_functions[] = {
     {0, JSOP_WRAPPER(NULL), 0, 0}
 };
 
-JSBool
-new_py_def_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
+JSBool new_py_def_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval, int for_of)
 {
-    PyObject* pyiter = NULL;
-    PyObject* attached = NULL;
     JSObject* jsiter = NULL;
     jsval jsv = JSVAL_VOID;
-    JSBool ret = JS_FALSE;
 
     // Initialize the return value
     rval.setUndefined();
 
-    pyiter = PyObject_GetIter(obj);
-    if(pyiter == NULL)
-    {
-        if(PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_TypeError))
-        {
+    CPyAutoObject pyiter(PyObject_GetIter(obj));
+    if (pyiter == NULL) {
+        if(PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_TypeError)) {
             PyErr_Clear();
-            ret = JS_TRUE;
-            goto success;
-        }
-        else
-        {
-            goto error;
-        }
+	    return JS_TRUE;
+        } else {
+	    return JS_FALSE;
+	}
     }
 
     jsiter = JS_NewObject(cx->cx, &js_iter_class, NULL, NULL);
-    if(jsiter == NULL) goto error;
+    if (jsiter == NULL)
+	return JS_FALSE;
 
-    if(!JS_DefineFunctions(cx->cx, jsiter, js_def_iter_functions))
-    {
+    if (!JS_DefineFunctions(cx->cx, jsiter, js_def_iter_functions)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to define iter funcions.");
-        goto error;
+	return JS_FALSE;
     }
 
-    attached = obj;
-    Py_INCREF(attached);
-    jsv = PRIVATE_TO_JSVAL(attached);
+    Py_INCREF(obj);
+    jsv = PRIVATE_TO_JSVAL(obj);
     JS_SetReservedSlot(jsiter, SLOT_PYOBJ, jsv);
 
-    jsv = PRIVATE_TO_JSVAL(pyiter);
+    jsv = PRIVATE_TO_JSVAL(pyiter.asNew());
     JS_SetReservedSlot(jsiter, SLOT_ITER, jsv);
 
-    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, JSVAL_FALSE);
+    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, for_of? JSVAL_TRUE : JSVAL_FALSE);
 
-    //Py_INCREF(cx); 
     rval.setObject(*jsiter);
-    ret = JS_TRUE;
-    goto success;
 
-error:
-    Py_XDECREF(pyiter);
-    Py_XDECREF(attached);
-success:
-    return ret;
+    return JS_TRUE;
 }
 
-JSBool
-new_py_seq_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
+JSBool new_py_seq_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval, int for_of)
 {
-    PyObject* pyiter = NULL;
-    PyObject* attached = NULL;
     JSObject* jsiter = NULL;
     jsval jsv = JSVAL_VOID;
-    JSBool ret = JS_FALSE;
 
     // Initialize the return value
     rval.setUndefined();
 
     // Our counting state
-    pyiter = PyInt_FromLong(0);
-    if(pyiter == NULL) goto error;
+    CPyAutoObject pyiter(PyInt_FromLong(0));
+    if (pyiter == NULL) 
+	return JS_FALSE;
 
     jsiter = JS_NewObject(cx->cx, &js_iter_class, NULL, NULL);
-    if(jsiter == NULL) goto error;
+    if (jsiter == NULL) 
+	return JS_FALSE;
 
-    if(!JS_DefineFunctions(cx->cx, jsiter, js_seq_iter_functions))
-    {
+    if (!JS_DefineFunctions(cx->cx, jsiter, js_seq_iter_functions)) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to define iter funcions.");
-        goto error;
+	return JS_FALSE;
     }
 
-    attached = obj;
-    Py_INCREF(attached);
-    jsv = PRIVATE_TO_JSVAL(attached);
+    Py_INCREF(obj);
+    jsv = PRIVATE_TO_JSVAL(obj);
     JS_SetReservedSlot(jsiter, SLOT_PYOBJ, jsv);
 
-    jsv = PRIVATE_TO_JSVAL(pyiter);
+    jsv = PRIVATE_TO_JSVAL(pyiter.asNew());
     JS_SetReservedSlot(jsiter, SLOT_ITER, jsv);
 
-    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, JSVAL_FALSE);
+    JS_SetReservedSlot(jsiter, SLOT_ITERFLAG, for_of? JSVAL_TRUE : JSVAL_FALSE);
 
-    //Py_INCREF(cx);
     rval.setObject(*jsiter);
-    ret = JS_TRUE;
-    goto success;
 
-error:
-    Py_XDECREF(pyiter);
-    Py_XDECREF(attached);
-success:
-    return ret;
+    return JS_TRUE;
 }
 
-JSBool
-new_py_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval)
+JSBool new_py_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval, int for_of)
 {
-    if(PySequence_Check(obj))
-    {
-        return new_py_seq_iter(cx, obj, rval);
-    }
-    return new_py_def_iter(cx, obj, rval);
+    if (PySequence_Check(obj))
+        return new_py_seq_iter(cx, obj, rval, for_of);
+
+    return new_py_def_iter(cx, obj, rval, for_of);
 }

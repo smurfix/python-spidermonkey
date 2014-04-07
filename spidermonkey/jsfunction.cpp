@@ -13,8 +13,7 @@ js2py_function(Context* cx, jsval val, jsval parent)
 {
     Function* ret = NULL;
 
-    if(JSVAL_IS_VOID(parent) || !parent.isObject())
-    {
+    if (parent.isUndefined() || !(parent.isObject() || parent.isNull())) {
         PyErr_BadInternalCall();
         goto error;
     }
@@ -48,7 +47,7 @@ Function_dealloc(Function* self)
         JS_EndRequest(self->obj.cx->cx);
     }
 
-    ObjectType->tp_dealloc((PyObject*) self);
+    PJObjectType->tp_dealloc((PyObject*) self);
 }
 
 PyObject*

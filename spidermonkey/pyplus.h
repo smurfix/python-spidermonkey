@@ -1,29 +1,30 @@
 // Special helpers to simplify program structure and error handling
 // in C++ Python code.
 
-class CPyAutoObject
+template <typename T>
+class CPyAuto
 {
   public:
-    CPyAutoObject(PyObject *pyo) {
+    CPyAuto(T *pyo) {
 	m_pyo = pyo;
     }
-    ~CPyAutoObject() {
+    ~CPyAuto() {
 	Py_XDECREF(m_pyo);
     }
 
-    PyObject * operator->() const { return m_pyo; }
-    operator PyObject*() { return m_pyo; }
+    T * operator->() const { return m_pyo; }
+    operator T*() { return m_pyo; }
 
     // Steal the object from this auto, usually used when returning a New reference from a
     // context where it needed temporary protection from errors.
 
-    PyObject * asNew() { 
-	PyObject *ret = m_pyo;
+    T * asNew() { 
+	T *ret = m_pyo;
 	m_pyo = NULL;
 	return ret;
     }
 
-    CPyAutoObject& operator=(PyObject *newobj) {
+    CPyAuto& operator=(T *newobj) {
 	Py_XDECREF(m_pyo);
 	m_pyo = newobj;
 	return *this;
@@ -32,9 +33,11 @@ class CPyAutoObject
     bool isNull() { return m_pyo == NULL; }
 
   protected:
-    PyObject *m_pyo;
+    T *m_pyo;
 };
 
+
+typedef CPyAuto<PyObject> CPyAutoObject;
  
 template <typename T>
 class CPyAutoFree

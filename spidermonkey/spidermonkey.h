@@ -47,7 +47,7 @@ extern PyObject* SpidermonkeyModule;
 extern PyTypeObject* RuntimeType;
 extern PyTypeObject* ContextType;
 extern PyTypeObject* ClassType;
-extern PyTypeObject* ObjectType;
+extern PyTypeObject* PJObjectType;
 extern PyTypeObject* ArrayType;
 extern PyTypeObject* CompiledType;
 extern PyTypeObject* FunctionType;
@@ -59,3 +59,6 @@ extern PyObject* JSError;
 
 #define TRUE (-1)
 #define FALSE (0)
+
+#define Py_INCREF_RET(op) (Py_INCREF(op),(op))
+

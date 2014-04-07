@@ -90,8 +90,15 @@ JSBool js_get_prop(JSContext* jscx, JS::HandleObject jsobj, JS::HandleId keyid, 
         if (data == NULL) 
 	    return JS_FALSE;
 
+        if (strcmp("iterator", data) == 0) {
+            if (!new_py_iter(pycx, pyobj, rval, TRUE)) // use for-of style
+		return JS_FALSE;
+            if (!rval.isUndefined())
+		return JS_TRUE;
+	}
+
         if (strcmp("__iterator__", data) == 0) {
-            if (!new_py_iter(pycx, pyobj, rval))
+            if (!new_py_iter(pycx, pyobj, rval, FALSE)) // use for-in style
 		return JS_FALSE;
             if (!rval.isUndefined())
 		return JS_TRUE;
