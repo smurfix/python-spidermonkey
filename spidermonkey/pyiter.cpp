@@ -85,9 +85,9 @@ JSBool def_next(JSContext* jscx, unsigned argc, jsval* vp)
     }
 
     CPyAutoObject next(PyIter_Next(iter));
-    if (next == NULL && PyErr_Occurred()) {
+    if (next.isNull() && PyErr_Occurred()) {
 	return JS_FALSE;
-    } else if (next == NULL) {
+    } else if (next.isNull()) {
 	JS_ThrowStopIteration(jscx);
 	return JS_FALSE;
     }
@@ -99,8 +99,8 @@ JSBool def_next(JSContext* jscx, unsigned argc, jsval* vp)
 
     if (PyMapping_Check(pyobj) && for_of) {
         CPyAutoObject value(PyObject_GetItem(pyobj, next));
-        if (value == NULL) {
-            JS_ReportError(jscx, "Failed to get value in 'for each'");
+        if (value.isNull()) {
+            JS_ReportError(jscx, "Failed to get value in 'for of'");
 	    return JS_FALSE;
         }
         rval = py2js(pycx, value);
@@ -158,7 +158,7 @@ JSBool seq_next(JSContext* jscx, unsigned argc, jsval* vp)
     }
 
     CPyAutoObject next(PyInt_FromLong(currval + 1));
-    if (next == NULL)
+    if (next.isNull())
 	return JS_FALSE;
 
     JS_SetReservedSlot(jsthis, SLOT_ITER, PRIVATE_TO_JSVAL(next));
@@ -222,7 +222,7 @@ JSBool new_py_def_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval, 
     rval.setUndefined();
 
     CPyAutoObject pyiter(PyObject_GetIter(obj));
-    if (pyiter == NULL) {
+    if (pyiter.isNull()) {
         if(PyErr_GivenExceptionMatches(PyErr_Occurred(), PyExc_TypeError)) {
             PyErr_Clear();
 	    return JS_TRUE;
@@ -264,7 +264,7 @@ JSBool new_py_seq_iter(Context* cx, PyObject* obj, JS::MutableHandleValue rval, 
 
     // Our counting state
     CPyAutoObject pyiter(PyInt_FromLong(0));
-    if (pyiter == NULL) 
+    if (pyiter.isNull())
 	return JS_FALSE;
 
     jsiter = JS_NewObject(cx->cx, &js_iter_class, NULL, NULL);

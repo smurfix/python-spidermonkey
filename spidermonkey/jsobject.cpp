@@ -12,7 +12,7 @@ PyObject* make_object(PyTypeObject* type, Context* cx, jsval val)
 {
     JSObject* obj = JSVAL_TO_OBJECT(val);
 
-    JSAutoRequest(cx->cx);
+    JSAutoRequest request(cx->cx);
 
     // Wrap JS value
     CPyAutoObject tpl(Py_BuildValue("(O)", cx));
@@ -100,29 +100,14 @@ PyObject* PJObject_repr(PJObject* self)
 
 Py_ssize_t PJObject_length(PJObject* self)
 {
-    JSContext* cx;
-    JSObject* iter;
-    jsid pid;
-    JSBool status = JS_FALSE;
-    Py_ssize_t ret = 0;
-
-    /*
-        Using an iterator to make sure we get all
-        the properties for this object and its
-        prototype as per JS for ... in ... semantics.
-    */
-    
     JSAutoRequest request(self->cx->cx);
 
-    cx = self->cx->cx;
-    iter = JS_NewPropertyIterator(cx, self->obj);
-    status = JS_NextProperty(cx, iter, &pid);
-    while (status == JS_TRUE && !JSID_IS_VOID(pid)) {
-        ret += 1;
-        status = JS_NextProperty(cx, iter, &pid);
-    }
+    JSIdArray *ida = JS_Enumerate(self->cx->cx, JSVAL_TO_OBJECT(self->val));
 
-    return ret;
+    if (ida)
+	return JS_IdArrayLength(self->cx->cx, ida);
+
+    return 0;
 }
 
 PyObject* PJObject_getitem(PJObject* self, PyObject* key)
@@ -200,7 +185,14 @@ PyObject* PJObject_rich_cmp(PJObject* self, PyObject* other, int op)
     if (op != Py_EQ && op != Py_NE)
 	return Py_INCREF_RET(Py_NotImplemented);
 
-    int llen = PyObject_Length((PyObject*)self);
+    JSContext *jcx = self->cx->cx;
+    JSAutoRequest request(jcx);
+
+    JSIdArray *ida = JS_Enumerate(jcx, JSVAL_TO_OBJECT(self->val));
+
+    int llen = -1;
+    if (ida)
+	llen = JS_IdArrayLength(jcx, ida);
     if (llen < 0)
 	return NULL;
 
@@ -214,22 +206,16 @@ PyObject* PJObject_rich_cmp(PJObject* self, PyObject* other, int op)
 	return Py_INCREF_RET(Py_True);
     }
 
-    JSContext *cx = self->cx->cx;
-    JSAutoRequest request(cx);
-
-    jsid pid;
-    JSObject *iter = JS_NewPropertyIterator(cx, self->obj);
-    JSBool status = JS_NextProperty(cx, iter, &pid);
-
-    while (status == JS_TRUE && !JSID_IS_VOID(pid)) {
+    for (int idix = 0; idix < llen; idix++) {
 	jsval pkey, pval;
+	jsid pid = JS_IdArrayGet(jcx, ida, idix);
 
-        if (!JS_IdToValue(self->cx->cx, pid, &pkey)) {
+        if (!JS_IdToValue(jcx, pid, &pkey)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get key.");
 	    return NULL;
         }
 
-        if (!JS_GetPropertyById(self->cx->cx, self->obj, pid, &pval)) {
+        if (!JS_GetPropertyById(jcx, self->obj, pid, &pval)) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get property.");
 	    return NULL;
         }
@@ -259,8 +245,6 @@ PyObject* PJObject_rich_cmp(PJObject* self, PyObject* other, int op)
 		return Py_INCREF_RET(Py_False);
 	    return Py_INCREF_RET(Py_True);
         }
-
-        status = JS_NextProperty(cx, iter, &pid);
     }
 
     if (op == Py_EQ)

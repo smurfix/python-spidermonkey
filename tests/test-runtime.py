@@ -14,8 +14,8 @@ def test_create_no_memory():
 
 def test_exceed_memory():
     # Test to see if OOM exception os raised.
-    rt = t.spidermonkey.Runtime(50000)
+    rt = t.spidermonkey.Runtime(1000000)
     cx = rt.new_context()
-    script = "var b = []; for(var f in 100000) b.push(2.456);"
-    cx.execute(script)
+    script = "var b = []; for (var i = 0; i < 1000000; i++) b.push('string: ' + i);"
+    t.raises(t.JSError, cx.execute, script)
 

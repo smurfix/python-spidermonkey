@@ -124,7 +124,7 @@ def platform_config():
     # us all the information we need.
     if USE_SYSTEM_LIB:
         if DEBUG:
-            config['extra_compile_args'] = ['-g', '-DDEBUG']
+            config['extra_compile_args'] = ['-g', '-DDEBUG', '-O0']
             return js_config(config=config)
         else:
             return js_config()
@@ -135,7 +135,8 @@ def platform_config():
         config["extra_compile_args"].extend([
             "-UNDEBG",
             "-DDEBUG",
-            "-DJS_PARANOID_REQUEST"
+            "-DJS_PARANOID_REQUEST",
+            "-O0",
         ])
 
     config["include_dirs"] = [

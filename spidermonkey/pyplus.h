@@ -24,9 +24,19 @@ class CPyAuto
 	return ret;
     }
 
-    CPyAuto& operator=(T *newobj) {
+    void setFromNew(T *newobj) {
 	Py_XDECREF(m_pyo);
 	m_pyo = newobj;
+    }
+
+    void setFromBorrowed(T *newobj) {
+	*this = newobj;
+	if (newobj != NULL)
+	    Py_INCREF(newobj);
+    }
+
+    CPyAuto& operator=(T *newobj) {
+	this->setFromNew(newobj);
 	return *this;
     }
 

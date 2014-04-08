@@ -19,7 +19,7 @@ class Session(object):
 
 @t.rt()
 def test_churn_contexts(rt):
-    for i in range(1000):
+    for i in range(100):
         cx = rt.new_context()
         cx.add_global('session', Session)
         data = cx.execute('new session().set("foo");')
