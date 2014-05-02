@@ -105,6 +105,10 @@ def js_config(config=None):
     config = pkg_config("mozjs185", config)
     return config
 
+def mozjs_config(config=None):
+    config = pkg_config("mozilla-js", config)
+    return config
+
 def platform_config():
     sysname = os.uname()[0]
     machine = os.uname()[-1]
@@ -125,9 +129,9 @@ def platform_config():
     if USE_SYSTEM_LIB:
         if DEBUG:
             config['extra_compile_args'] = ['-g', '-DDEBUG', '-O0']
-            return js_config(config=config)
+            return mozjs_config(config=config)
         else:
-            return js_config()
+            return mozjs_config()
     
     # Debug builds are useful for finding errors in
     # the request counting semantics for Spidermonkey
