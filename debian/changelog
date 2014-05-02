@@ -1,3 +1,9 @@
+python-spidermonkey (0.0.9-2) smurf; urgency=low
+
+  * Depend on libnspr4-dev.
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Fri, 02 May 2014 06:32:15 +0200
+
 python-spidermonkey (0.0.9-1) smurf; urgency=low
 
   * source package automatically created by stdeb 0.6.0+git
