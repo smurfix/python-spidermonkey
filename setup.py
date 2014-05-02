@@ -200,7 +200,7 @@ setup(
     ],
     
     setup_requires = [
-        'setuptools>=7.2',
+        'setuptools>=3.4',
         'nose>=1.3.0',
     ],
 

@@ -1,3 +1,9 @@
+python-spidermonkey (0.0.9-4) smurf; urgency=low
+
+  * setuptools 7 ??
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Fri, 02 May 2014 07:00:58 +0200
+
 python-spidermonkey (0.0.9-3) smurf; urgency=low
 
   * Merged garywiz/cpp-sm24
