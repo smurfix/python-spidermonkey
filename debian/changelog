@@ -1,3 +1,9 @@
+python-spidermonkey (0.0.9-5) smurf; urgency=low
+
+  * more depends
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Fri, 02 May 2014 07:05:50 +0200
+
 python-spidermonkey (0.0.9-4) smurf; urgency=low
 
   * setuptools 7 ??
