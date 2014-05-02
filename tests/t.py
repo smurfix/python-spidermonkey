@@ -28,7 +28,7 @@ class echo(test):
     def args(self):
         rt = spidermonkey.Runtime()
         cx = rt.new_context()
-        echo = cx.execute("function(arg) {return arg;}")
+        echo = cx.execute("(function(arg) {return arg;})")
         return (echo,)
 
 class glbl(test):

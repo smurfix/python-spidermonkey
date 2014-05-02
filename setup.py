@@ -1,5 +1,6 @@
 #
 # Copyright 2009 Paul J. Davis <paul.joseph.davis@gmail.com>
+# Copyright 2014 Gary J. Wisniewski <garyw@blueseastech.com>
 #
 # This file is part of the python-spidermonkey package released
 # under the MIT license.
@@ -12,6 +13,13 @@ objects and functions in Python, and evaluation and calling of JavaScript
 scripts and functions respectively.  Borrows heavily from Claes Jacobssen's
 Javascript Perl module, in turn based on Mozilla's 'PerlConnect' Perl binding.
 """,
+
+# This is a workaround for a Python bug aggravated by nose
+# Issue report: http://bugs.python.org/issue15881
+try:
+    import multiprocessing
+except ImportError:
+    pass
 
 # I haven't the sligthest, but this appears to fix
 # all those EINTR errors. Pulled and adapted for OS X
@@ -29,26 +37,33 @@ import os
 import subprocess as sp
 import sys
 from distutils.dist import Distribution
-import ez_setup
-ez_setup.use_setuptools()
+from distutils.sysconfig import get_config_vars
 from setuptools import setup, Extension
 
+MOZJS_SWITCH = "--mozjs-source"
+MOZJS_PATH = None
+USE_SYSTEM_LIB = True
+
 DEBUG = "--debug" in sys.argv
-USE_SYSTEM_LIB = "--system-library" in sys.argv
+
+if MOZJS_SWITCH in sys.argv:
+    MOZJS_PATH = os.path.abspath(os.path.join(sys.argv[sys.argv.index(MOZJS_SWITCH) + 1], 'js/src/dist'))
+    USE_SYSTEM_LIB = False
+    if not os.path.exists(MOZJS_PATH):
+        print "Error: Trying to use mozjs source build, but cannot find path: " + MOZJS_PATH
+        exit(1)
+
+# Remove strict-prototypes from any options, this allows CPP files to be compiled using gcc.  This is really
+# a bug in distutils.
+# Code is from: http://stackoverflow.com/questions/8106258/cc1plus-warning-command-line-option-wstrict-prototypes-is-valid-for-ada-c-o/9740721#9740721
+(opt,) = get_config_vars('OPT')
+os.environ['OPT'] = " ".join(flag for flag in opt.split() if flag != '-Wstrict-prototypes')
 
 def find_sources(extensions=(".c", ".cpp")):
-    if USE_SYSTEM_LIB:
-        return [
-            fname
-            for ext in extensions
-            for fname in glob.glob("spidermonkey/*" + ext)
-        ]
-    else:
-        return [
-            os.path.join(dpath, fname)
-            for (dpath, dnames, fnames) in os.walk("./spidermonkey")
-            for fname in fnames
-            if fname.endswith(extensions)
+    return [
+        fname
+        for ext in extensions
+        for fname in glob.glob("spidermonkey/*" + ext)
         ]
 
 def pkg_config(pkg_name, config=None):
@@ -87,46 +102,56 @@ def nspr_config(config=None):
     return pkg_config("nspr", config)
 
 def js_config(config=None):
-    config = pkg_config("mozilla-js", config)
-    if "-DJS_THREADSAFE" not in config["extra_compile_args"]:
-        raise SystemError("Unable to link against a library that was "
-            "compiled without -DJS_THREADSAFE");
+    config = pkg_config("mozjs185", config)
     return config
 
 def platform_config():
     sysname = os.uname()[0]
     machine = os.uname()[-1]
 
-    # If we're linking against a system library it should give
-    # us all the information we need.
-    if USE_SYSTEM_LIB:
-        return js_config()
-    
     # Build our configuration
     config = {
-        "extra_compile_args": [
-            "-DJS_THREADSAFE",
-            "-DPOSIX_SOURCE",
-            "-D_BSD_SOURCE",
-            "-Wno-strict-prototypes" # Disable copius JS warnings
-        ],
-        "include_dirs": [
-            "spidermonkey/libjs",
-            "spidermonkey/%s-%s" % (sysname, machine)
-        ],
+        # no-write-strings turns of coercion warnings about string literals.  THIS SHOULD BE REMOVED
+        # as soon as Python header files start using const correctly.
+        "extra_compile_args": ["-Wno-write-strings"],
+        "include_dirs": [],
         "library_dirs": [],
         "libraries": [],
         "extra_link_args": []
     }
 
+    # If we're linking against a system library it should give
+    # us all the information we need.
+    if USE_SYSTEM_LIB:
+        if DEBUG:
+            config['extra_compile_args'] = ['-g', '-DDEBUG', '-O0']
+            return js_config(config=config)
+        else:
+            return js_config()
+    
     # Debug builds are useful for finding errors in
     # the request counting semantics for Spidermonkey
     if DEBUG:
         config["extra_compile_args"].extend([
             "-UNDEBG",
             "-DDEBUG",
-            "-DJS_PARANOID_REQUEST"
+            "-DJS_PARANOID_REQUEST",
+            "-O0",
         ])
+
+    config["include_dirs"] = [
+            "spidermonkey/%s-%s" % (sysname, machine)
+            ]
+
+    if MOZJS_PATH:
+        config["include_dirs"] += [os.path.join(MOZJS_PATH, "include")]
+        config["library_dirs"] += [os.path.join(MOZJS_PATH, "lib")]
+        config["runtime_library_dirs"] = [os.path.join(MOZJS_PATH, "lib")]
+        config["libraries"] += ['mozjs-24']
+        config["extra_compile_args"] += ["-Wl,-version-script,symverscript"]
+        #config["extra_compile_args"] += ["-include RequiredDefines.h"]
+    else:
+        config["include_dirs"] += ["spidermonkey/libjs"]
 
     if sysname in ["Linux", "FreeBSD"]:
         config["extra_compile_args"].extend([
@@ -144,19 +169,19 @@ def platform_config():
 
 Distribution.global_options.append(("debug", None,
                     "Build a DEBUG version of spidermonkey."))
-Distribution.global_options.append(("system-library", None,
-                    "Link against an installed system library."))
+Distribution.global_options.append((MOZJS_SWITCH[2:] + "=", None,
+                    "Link against prebuilt library at specific location."))
 
 setup(
     name = "python-spidermonkey",
-    version = "0.0.9",
+    version = "0.2.01",
     license = "MIT",
-    author = "Paul J. Davis",
-    author_email = "paul.joseph.davis@gmail.com",
+    author = "Gary J. Wisniewski",
+    author_email = "garyw@blueseastech.com",
     description = "JavaScript / Python bridge.",
     long_description = __doc__,
-    url = "http://github.com/davisp/python-spidermonkey",
-    download_url = "http://github.com/davisp/python-spidermonkey.git",
+    url = "http://github.com/garywiz/python-spidermonkey",
+    download_url = "http://github.com/garywiz/python-spidermonkey.git",
     zip_safe = False,
     
     classifiers = [
@@ -175,8 +200,8 @@ setup(
     ],
     
     setup_requires = [
-        'setuptools>=0.6c8',
-        'nose>=0.10.0',
+        'setuptools>=7.2',
+        'nose>=1.3.0',
     ],
 
     ext_modules =  [

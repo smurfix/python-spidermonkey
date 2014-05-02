@@ -10,7 +10,7 @@ def test_raise_js_error(cx):
 
 @t.cx()
 def test_raise_js_error_in_function(cx):
-    func = cx.execute("function(doc) {throw(\"error\");};")
+    func = cx.execute("function anon(doc) {throw(\"error\");};")
     t.raises(Exception, func)
 
 @t.cx()

@@ -15,5 +15,6 @@
 */
 
 jsval py2js_object(Context* cx, PyObject* obj);
+PyObject* unwrap_pyobject(jsval val);
 
 #endif

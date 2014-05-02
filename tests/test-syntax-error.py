@@ -10,6 +10,6 @@ def test_syntax_error(cx):
     t.raises(t.JSError, cx.execute, "function(asdf;")
 
 @t.cx()
-def test_invalid_octal(cx):
-    t.raises(t.JSError, cx.execute, "09;")
+def test_invalid_hexadecimal(cx):
+    t.raises(t.JSError, cx.execute, "0xFG9;")
 

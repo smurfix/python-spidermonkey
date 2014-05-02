@@ -1,0 +1,15 @@
+This file contains notes that may be useful for maintainers.
+
+First, here is a list of assumptions, some of which may solve problems right off the bat:
+- This has only been tested and developed on 32-bit systems (indicate otherwise if so)
+- You should install Nose Version 1.3.1 or later (the current pip version)
+
+
+
+Running Tests
+=============
+
+If you want to run a single test at the command line:
+
+   nosetests --tests tests/test-to-python.py:test_to_py_False
+
