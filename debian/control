@@ -3,7 +3,7 @@ Maintainer: Paul J. Davis <paul.joseph.davis@gmail.com>
 Section: python
 Priority: optional
 Build-Depends: python-setuptools (>= 0.6b3), python-all-dev (>= 2.6.6-3), debhelper (>= 7),
-  libnspr4-dev
+  libnspr4-dev, libmozjs185-dev
 Standards-Version: 3.9.1
 
 Package: python-python-spidermonkey
