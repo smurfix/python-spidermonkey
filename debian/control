@@ -6,7 +6,7 @@ Build-Depends: python-setuptools (>= 0.6b3), python-all-dev (>= 2.6.6-3), debhel
   libnspr4-dev, libmozjs185-dev, libmozjs-dev
 Standards-Version: 3.9.1
 
-Package: python-python-spidermonkey
+Package: python-spidermonkey
 Architecture: any
 Depends: ${misc:Depends}, ${python:Depends}, ${shlibs:Depends}
 Description: JavaScript / Python bridge.
